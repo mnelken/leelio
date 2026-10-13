@@ -1,21 +1,33 @@
 /**
- * FacialSkeletonRenderer: 3D Anatomical Landmark Wireframe & FACS Parameter Rig
+ * FacialSkeletonRenderer: 3D Anatomical Landmark Wireframe, FACS Parameter Rig & Textured Mesh
  * 
- * Renders:
- * 1. 3D Anatomical Landmark Skeleton (72 articulated facial nodes)
- * 2. 88 Skeletal Bone Connections with anatomical region color coding:
+ * Features:
+ * 1. 3D Anatomical Surface Mesh: Photographic UV-mapped mesh deformed by 118 kinematic landmarks
+ * 2. Standard Anatomical Torso & Epaulets Model (Neck, Clavicles, Epaulets, Sternum, Medals, Ribcage, Lumbar)
+ * 3. Standard 21-Joint Articulated Hand Model (MediaPipe / Leap Motion Topology)
+ * 4. 3D Anatomical Wireframe Bones with region-specific color coding:
  *    - Cyan: Mandible & Chin contour
  *    - Hot Pink: Outer & Inner Vermilion (Lips & Oral Aperture)
  *    - Amber: Orbital Eye Sockets
- *    - Gold: Frontalis Eyebrows
+ *    - Gold: Frontalis Eyebrows & Military Epaulets
  *    - Mint: Nasal Bridge & Septum
  *    - Lavender: Cervical Spine & Cranium Vault
- * 3. 3D Cervical Coordinate Gimbal (Roll, Pitch, Yaw axes)
- * 4. Interactive 3D Orbit: Drag with mouse to inspect 3D facial depth
- * 5. High-speed buffer geometry updates running locked at 60 FPS
+ *    - Cobalt: Thoracic Sternum & Ribcage
+ *    - Neon Lime: Standard 21-Joint Articulated Hand
+ *    - Violet: Peaked Military Cap
+ * 5. Interactive 3D Orbit: Mouse drag / touch to inspect 3D facial & body depth
+ * 6. Rendering Modes:
+ *    - "hybrid": Textured 3D Mesh + Articulated Skeletal Wireframe & Nodes
+ *    - "textured": Photorealistic 3D Surface Animation only
+ *    - "wireframe": Pure Kinematic Skeletal Rig
  */
 
-import { SKELETON_EDGES, NEUTRAL_LANDMARKS_3D } from "./facialSkeletonModel.js";
+import {
+  SKELETON_EDGES,
+  NEUTRAL_LANDMARKS_3D,
+  LANDMARK_UVS,
+  MESH_TRIANGLES
+} from "./facialSkeletonModel.js";
 
 const THREE = window.THREE;
 
@@ -29,21 +41,32 @@ export class FacialSkeletonRenderer {
     this.scene = null;
     this.camera = null;
 
+    // Rendering mode: 'hybrid' | 'textured' | 'wireframe'
+    this.renderMode = options.renderMode || "textured";
+
     // 3D Objects
+    this.surfaceMesh = null;
     this.linesMesh = null;
     this.pointsMesh = null;
     this.gimbalGroup = null;
-    this.headPivotMesh = null;
 
-    // Buffer Attributes
+    // Buffer Geometries & Attributes
+    this.meshGeom = null;
+    this.meshPosAttr = null;
+    this.lineGeom = null;
     this.linePosAttr = null;
+    this.pointGeom = null;
     this.pointPosAttr = null;
+
+    // Textures & Materials
+    this.avatarTexture = null;
+    this.meshMaterial = null;
 
     // Mouse Orbit State
     this.isDragging = false;
     this.prevMouse = { x: 0, y: 0 };
-    this.orbitRotation = { x: 0.05, y: 0.0 }; // slight default 3D isometric tilt
-    this.targetOrbit = { x: 0.05, y: 0.0 };
+    this.orbitRotation = { x: 0.04, y: 0.0 }; // slight default 3D isometric tilt
+    this.targetOrbit = { x: 0.04, y: 0.0 };
 
     this.init();
   }
@@ -65,32 +88,112 @@ export class FacialSkeletonRenderer {
 
     // 2. Scene & Perspective Camera
     this.scene = new THREE.Scene();
-    this.camera = new THREE.PerspectiveCamera(40, width / height, 0.1, 50);
-    this.camera.position.set(0, -0.15, 3.2);
-    this.camera.lookAt(0, -0.15, 0);
+    this.camera = new THREE.PerspectiveCamera(42, width / height, 0.1, 50);
+    // Framed to capture peaked military cap at top, face, chest medals, and crossed arms with hand at bottom
+    this.camera.position.set(0, -0.65, 4.3);
+    this.camera.lookAt(0, -0.65, 0);
 
     // Root group for user orbit rotation
     this.rigGroup = new THREE.Group();
     this.scene.add(this.rigGroup);
 
-    // 3. Build 3D Line Wireframe
+    // 3. Build 3D Textured Surface Mesh (Image mapped onto wireframe)
+    this.buildSurfaceMesh();
+
+    // 4. Build 3D Skeletal Wireframe
     this.buildWireframe();
 
-    // 4. Build Landmark Nodes
+    // 5. Build Landmark Nodes
     this.buildLandmarkPoints();
 
-    // 5. Build Cervical Gimbal / Coordinate Axes
+    // 6. Build Cervical Gimbal / Coordinate Axes
     this.buildGimbal();
 
-    // 6. Setup Interactive Orbit Drag
+    // Apply initial render mode visibility
+    this.setRenderMode(this.renderMode);
+
+    // 7. Setup Interactive Orbit Drag
     this.setupInteractivity();
 
     // Handle Resize
     window.addEventListener("resize", () => this.handleResize());
   }
 
+  buildSurfaceMesh() {
+    const count = NEUTRAL_LANDMARKS_3D.length;
+    const positions = new Float32Array(count * 3);
+    const uvs = new Float32Array(count * 2);
+
+    for (let i = 0; i < count; i++) {
+      const p = NEUTRAL_LANDMARKS_3D[i];
+      positions[i * 3] = p[0];
+      positions[i * 3 + 1] = p[1];
+      positions[i * 3 + 2] = p[2];
+
+      const uv = LANDMARK_UVS[i] || [0.5, 0.5];
+      uvs[i * 2] = uv[0];
+      uvs[i * 2 + 1] = uv[1];
+    }
+
+    const indices = [];
+    for (let i = 0; i < MESH_TRIANGLES.length; i++) {
+      const t = MESH_TRIANGLES[i];
+      indices.push(t[0], t[1], t[2]);
+    }
+
+    this.meshGeom = new THREE.BufferGeometry();
+    this.meshPosAttr = new THREE.BufferAttribute(positions, 3);
+    this.meshGeom.setAttribute("position", this.meshPosAttr);
+    this.meshGeom.setAttribute("uv", new THREE.BufferAttribute(uvs, 2));
+    this.meshGeom.setIndex(indices);
+    this.meshGeom.computeVertexNormals();
+
+    // Load avatar photographic texture
+    const textureLoader = new THREE.TextureLoader();
+    const avatarUrl = new URL("../avatar.jpg", import.meta.url).href;
+    this.avatarTexture = textureLoader.load(
+      avatarUrl,
+      (tex) => {
+        tex.generateMipmaps = true;
+        tex.minFilter = THREE.LinearMipmapLinearFilter;
+        tex.magFilter = THREE.LinearFilter;
+        tex.wrapS = THREE.ClampToEdgeWrapping;
+        tex.wrapT = THREE.ClampToEdgeWrapping;
+        if (this.meshMaterial) {
+          this.meshMaterial.map = tex;
+          this.meshMaterial.needsUpdate = true;
+        }
+        fetch('/api/client-error', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'texture_success',
+            msg: 'Avatar texture loaded into FacialSkeletonRenderer: ' + tex.image?.width + 'x' + tex.image?.height,
+            time: new Date().toISOString()
+          })
+        }).catch(() => {});
+      },
+      undefined,
+      (err) => {
+        console.warn("[FacialSkeletonRenderer] Texture loading warning:", err);
+      }
+    );
+
+    // MeshBasicMaterial with polygonOffset to allow crisp wireframe overlay in hybrid mode
+    this.meshMaterial = new THREE.MeshBasicMaterial({
+      map: this.avatarTexture,
+      side: THREE.DoubleSide,
+      vertexColors: false,
+      polygonOffset: true,
+      polygonOffsetFactor: 1,
+      polygonOffsetUnits: 1
+    });
+
+    this.surfaceMesh = new THREE.Mesh(this.meshGeom, this.meshMaterial);
+    this.rigGroup.add(this.surfaceMesh);
+  }
+
   getRegionColor(p1, p2) {
-    // Determine color based on anatomical region of connected vertices
     const maxIdx = Math.max(p1, p2);
     const minIdx = Math.min(p1, p2);
 
@@ -115,8 +218,32 @@ export class FacialSkeletonRenderer {
       return [0.0, 0.85, 1.0]; // Bright Cyan
     }
     // Cervical spine & Cranium
-    if (maxIdx >= 68) {
+    if (minIdx >= 68 && maxIdx <= 71) {
       return [0.55, 0.40, 0.95]; // Lavender
+    }
+    // Torso, Clavicles & Epaulets
+    if (minIdx >= 72 && maxIdx <= 76) {
+      return [1.0, 0.84, 0.0]; // Military Gold Epaulets
+    }
+    // Sternum, Medals, Ribcage, Lumbar
+    if (minIdx >= 77 && maxIdx <= 80) {
+      return [0.20, 0.55, 1.0]; // Royal Cobalt
+    }
+    // Arms & Folded Forearms
+    if (minIdx >= 81 && maxIdx <= 84) {
+      return [0.0, 0.78, 1.0]; // Deep Sky Blue
+    }
+    // Standard 21-Joint Hand (MediaPipe Topology)
+    if (minIdx >= 85 && maxIdx <= 105) {
+      return [0.20, 1.00, 0.45]; // Neon Lime / Hand Skeleton
+    }
+    // Peaked Military Cap
+    if (minIdx >= 106 && maxIdx <= 111) {
+      return [0.70, 0.35, 1.0]; // Imperial Violet
+    }
+    // Frame / Canvas Anchors
+    if (maxIdx >= 112) {
+      return [0.20, 0.25, 0.35]; // Translucent Slate
     }
     // Facial biomechanical struts
     return [0.25, 0.45, 0.75]; // Subdued Steel Blue
@@ -154,19 +281,21 @@ export class FacialSkeletonRenderer {
       colors[offsetB + 2] = col[2];
     }
 
-    const geometry = new THREE.BufferGeometry();
+    this.lineGeom = new THREE.BufferGeometry();
     this.linePosAttr = new THREE.BufferAttribute(positions, 3);
-    geometry.setAttribute("position", this.linePosAttr);
-    geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+    this.lineGeom.setAttribute("position", this.linePosAttr);
+    this.lineGeom.setAttribute("color", new THREE.BufferAttribute(colors, 3));
 
     const material = new THREE.LineBasicMaterial({
       vertexColors: true,
       linewidth: 1.5,
       transparent: true,
-      opacity: 0.92
+      opacity: 0.88,
+      depthWrite: false
     });
 
-    this.linesMesh = new THREE.LineSegments(geometry, material);
+    this.linesMesh = new THREE.LineSegments(this.lineGeom, material);
+    this.linesMesh.renderOrder = 1;
     this.rigGroup.add(this.linesMesh);
   }
 
@@ -190,21 +319,31 @@ export class FacialSkeletonRenderer {
         colors[i * 3] = 0.1; colors[i * 3 + 1] = 1.0; colors[i * 3 + 2] = 0.7;
       } else if (i === 68) { // Cervical neck pivot
         colors[i * 3] = 0.7; colors[i * 3 + 1] = 0.4; colors[i * 3 + 2] = 1.0;
+      } else if (i >= 72 && i <= 76) { // Clavicles & Epaulets
+        colors[i * 3] = 1.0; colors[i * 3 + 1] = 0.84; colors[i * 3 + 2] = 0.0;
+      } else if (i === 83) { // Smartwatch wrist
+        colors[i * 3] = 1.0; colors[i * 3 + 1] = 0.55; colors[i * 3 + 2] = 0.0;
+      } else if (i >= 85 && i <= 105) { // 21-Joint Hand
+        colors[i * 3] = 0.2; colors[i * 3 + 1] = 1.0; colors[i * 3 + 2] = 0.45;
+      } else if (i >= 106 && i <= 111) { // Cap
+        colors[i * 3] = 0.7; colors[i * 3 + 1] = 0.35; colors[i * 3 + 2] = 1.0;
+      } else if (i >= 112) { // Frame
+        colors[i * 3] = 0.3; colors[i * 3 + 1] = 0.35; colors[i * 3 + 2] = 0.45;
       } else {
         colors[i * 3] = 0.9; colors[i * 3 + 1] = 0.95; colors[i * 3 + 2] = 1.0;
       }
     }
 
-    const geometry = new THREE.BufferGeometry();
+    this.pointGeom = new THREE.BufferGeometry();
     this.pointPosAttr = new THREE.BufferAttribute(positions, 3);
-    geometry.setAttribute("position", this.pointPosAttr);
-    geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+    this.pointGeom.setAttribute("position", this.pointPosAttr);
+    this.pointGeom.setAttribute("color", new THREE.BufferAttribute(colors, 3));
 
-    // Circular point styling via Canvas texture
     const pointTexture = this.createPointTexture();
 
     const material = new THREE.PointsMaterial({
-      size: 10,
+      size: 5,
+      sizeAttenuation: false,
       map: pointTexture,
       transparent: true,
       vertexColors: true,
@@ -212,7 +351,8 @@ export class FacialSkeletonRenderer {
       depthWrite: false
     });
 
-    this.pointsMesh = new THREE.Points(geometry, material);
+    this.pointsMesh = new THREE.Points(this.pointGeom, material);
+    this.pointsMesh.renderOrder = 2;
     this.rigGroup.add(this.pointsMesh);
   }
 
@@ -260,6 +400,30 @@ export class FacialSkeletonRenderer {
     this.rigGroup.add(this.gimbalGroup);
   }
 
+  /**
+   * Set display mode: 'hybrid' (mesh + wireframe), 'textured' (mesh only), 'wireframe' (rig only)
+   */
+  setRenderMode(mode) {
+    this.renderMode = mode;
+    if (mode === "textured") {
+      if (this.surfaceMesh) this.surfaceMesh.visible = true;
+      if (this.linesMesh) this.linesMesh.visible = false;
+      if (this.pointsMesh) this.pointsMesh.visible = false;
+      if (this.gimbalGroup) this.gimbalGroup.visible = false;
+    } else if (mode === "wireframe") {
+      if (this.surfaceMesh) this.surfaceMesh.visible = false;
+      if (this.linesMesh) this.linesMesh.visible = true;
+      if (this.pointsMesh) this.pointsMesh.visible = true;
+      if (this.gimbalGroup) this.gimbalGroup.visible = true;
+    } else {
+      // 'hybrid' (default)
+      if (this.surfaceMesh) this.surfaceMesh.visible = true;
+      if (this.linesMesh) this.linesMesh.visible = true;
+      if (this.pointsMesh) this.pointsMesh.visible = true;
+      if (this.gimbalGroup) this.gimbalGroup.visible = true;
+    }
+  }
+
   setupInteractivity() {
     const c = this.canvas;
 
@@ -282,7 +446,6 @@ export class FacialSkeletonRenderer {
 
       this.targetOrbit.y += dx * 0.008;
       this.targetOrbit.x += dy * 0.008;
-      // Clamp vertical tilt
       this.targetOrbit.x = Math.max(-0.6, Math.min(0.6, this.targetOrbit.x));
     });
 
@@ -334,57 +497,94 @@ export class FacialSkeletonRenderer {
     this.rigGroup.rotation.x = this.orbitRotation.x;
     this.rigGroup.rotation.y = this.orbitRotation.y;
 
-    // Update 3D Landmark Positions
     const landmarks = this.skeleton.deformedLandmarks;
-    const pointPos = this.pointPosAttr.array;
-    const linePos = this.linePosAttr.array;
-
     const safeNum = (v) => (Number.isFinite(v) ? v : 0.0);
 
-    // 1. Update Points
-    for (let i = 0; i < landmarks.length; i++) {
-      const p = landmarks[i] || [0, 0, 0];
-      pointPos[i * 3] = safeNum(p[0]);
-      pointPos[i * 3 + 1] = safeNum(p[1]);
-      pointPos[i * 3 + 2] = safeNum(p[2]);
+    // 1. Update Textured Surface Mesh Vertex Positions
+    if (this.surfaceMesh && this.surfaceMesh.visible && this.meshPosAttr) {
+      const meshPos = this.meshPosAttr.array;
+      for (let i = 0; i < landmarks.length; i++) {
+        const p = landmarks[i] || [0, 0, 0];
+        meshPos[i * 3] = safeNum(p[0]);
+        meshPos[i * 3 + 1] = safeNum(p[1]);
+        meshPos[i * 3 + 2] = safeNum(p[2]);
+      }
+      this.meshPosAttr.needsUpdate = true;
+      if (this.meshGeom) {
+        this.meshGeom.computeVertexNormals();
+        this.meshGeom.computeBoundingSphere();
+      }
     }
-    this.pointPosAttr.needsUpdate = true;
 
-    // 2. Update Lines
-    const edgeCount = SKELETON_EDGES.length;
-    for (let e = 0; e < edgeCount; e++) {
-      const [idxA, idxB] = SKELETON_EDGES[e];
-      const pA = landmarks[idxA] || [0, 0, 0];
-      const pB = landmarks[idxB] || [0, 0, 0];
-
-      const offA = (e * 2) * 3;
-      const offB = (e * 2 + 1) * 3;
-
-      linePos[offA] = safeNum(pA[0]);
-      linePos[offA + 1] = safeNum(pA[1]);
-      linePos[offA + 2] = safeNum(pA[2]);
-
-      linePos[offB] = safeNum(pB[0]);
-      linePos[offB + 1] = safeNum(pB[1]);
-      linePos[offB + 2] = safeNum(pB[2]);
+    // 2. Update Landmark Points
+    if (this.pointsMesh && this.pointsMesh.visible && this.pointPosAttr) {
+      const pointPos = this.pointPosAttr.array;
+      for (let i = 0; i < landmarks.length; i++) {
+        const p = landmarks[i] || [0, 0, 0];
+        pointPos[i * 3] = safeNum(p[0]);
+        pointPos[i * 3 + 1] = safeNum(p[1]);
+        pointPos[i * 3 + 2] = safeNum(p[2]);
+      }
+      this.pointPosAttr.needsUpdate = true;
+      if (this.pointGeom) {
+        this.pointGeom.computeBoundingSphere();
+      }
     }
-    this.linePosAttr.needsUpdate = true;
 
-    // Safe recomputation of geometry bounding spheres to avoid NaN warnings
-    if (this.pointGeom) this.pointGeom.computeBoundingSphere();
-    if (this.lineGeom) this.lineGeom.computeBoundingSphere();
+    // 3. Update Wireframe Lines
+    if (this.linesMesh && this.linesMesh.visible && this.linePosAttr) {
+      const linePos = this.linePosAttr.array;
+      const edgeCount = SKELETON_EDGES.length;
+      for (let e = 0; e < edgeCount; e++) {
+        const [idxA, idxB] = SKELETON_EDGES[e];
+        const pA = landmarks[idxA] || [0, 0, 0];
+        const pB = landmarks[idxB] || [0, 0, 0];
 
-    // 3. Update Gimbal Orientation
-    const pose = this.skeleton.pose || {};
-    this.gimbalGroup.rotation.z = safeNum(pose.headRoll);
-    this.gimbalGroup.rotation.x = safeNum(pose.headPitch);
-    this.gimbalGroup.rotation.y = safeNum(pose.headYaw);
+        const offA = (e * 2) * 3;
+        const offB = (e * 2 + 1) * 3;
 
-    // 4. Render
+        linePos[offA] = safeNum(pA[0]);
+        linePos[offA + 1] = safeNum(pA[1]);
+        linePos[offA + 2] = safeNum(pA[2]);
+
+        linePos[offB] = safeNum(pB[0]);
+        linePos[offB + 1] = safeNum(pB[1]);
+        linePos[offB + 2] = safeNum(pB[2]);
+      }
+      this.linePosAttr.needsUpdate = true;
+      if (this.lineGeom) {
+        this.lineGeom.computeBoundingSphere();
+      }
+    }
+
+    // 4. Update Gimbal Orientation
+    if (this.gimbalGroup && this.gimbalGroup.visible) {
+      const pose = this.skeleton.pose || {};
+      this.gimbalGroup.rotation.z = safeNum(pose.headRoll);
+      this.gimbalGroup.rotation.x = safeNum(pose.headPitch);
+      this.gimbalGroup.rotation.y = safeNum(pose.headYaw);
+    }
+
+    // 5. Render Scene
     this.renderer.render(this.scene, this.camera);
   }
 
   destroy() {
+    if (this.surfaceMesh) {
+      this.surfaceMesh.geometry.dispose();
+      this.surfaceMesh.material.dispose();
+    }
+    if (this.linesMesh) {
+      this.linesMesh.geometry.dispose();
+      this.linesMesh.material.dispose();
+    }
+    if (this.pointsMesh) {
+      this.pointsMesh.geometry.dispose();
+      this.pointsMesh.material.dispose();
+    }
+    if (this.avatarTexture) {
+      this.avatarTexture.dispose();
+    }
     if (this.renderer) {
       this.renderer.dispose();
     }

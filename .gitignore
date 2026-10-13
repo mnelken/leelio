@@ -10,6 +10,7 @@ public/*.apk
 
 # Calibration & test output images
 test_*.png
+tools/*.png
 
 # Node & Web Build artifacts
 node_modules/

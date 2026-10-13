@@ -127,6 +127,29 @@
       pointer-events: none;
     }
 
+    .mode-toggles {
+      position: absolute;
+      top: 40px;
+      left: 10px;
+      z-index: 10;
+      display: flex;
+      gap: 5px;
+    }
+    .mode-toggles .chip {
+      padding: 3px 9px;
+      font-size: 10px;
+      background: rgba(9, 14, 26, 0.85);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      cursor: pointer;
+    }
+    .mode-toggles .chip.active {
+      background: rgba(6, 182, 212, 0.28);
+      border-color: var(--accent-cyan);
+      color: #fff;
+      font-weight: 700;
+    }
+
     canvas, video {
       width: 100%;
       height: 420px;
@@ -312,10 +335,10 @@
 </head>
 <body>
   <header>
-    <h1>Leelio Neural Avatar • 3D Facial Skeleton & Kinematic Rig</h1>
+    <h1>Leelio Neural Avatar • 3D Textured Mesh & Articulated Rig</h1>
     <div class="status-bar">
       <span class="dot" id="status-dot"></span>
-      <span id="status-text">52-PARAMETER ARKIT / FACS RIG PHASE-LOCKED // 60 FPS</span>
+      <span id="status-text">52 FACS PARAMETERS • 118 3D LANDMARKS (TORSO + HAND) // 60 FPS</span>
     </div>
   </header>
 
@@ -336,16 +359,21 @@
       </div>
     </div>
 
-    <!-- Panel 2: 3D Facial Skeleton Model (52 FACS / ARKit Parameters) -->
+    <!-- Panel 2: 3D Facial Skeleton Model & Textured Mesh (118 Pts: Face, Torso, Hand) -->
     <div class="panel" id="panel-skeleton">
-      <div class="badge skeleton">💀 3D FACIAL SKELETON (52 FACS)</div>
+      <div class="badge skeleton" id="skeleton-badge">⚡ X-RAY HYBRID (MESH + RIG)</div>
+      <div class="mode-toggles">
+        <button class="chip active" id="mode-hybrid" title="Textured 3D Mesh with Skeletal Overlay">⚡ Hybrid</button>
+        <button class="chip" id="mode-textured" title="Photorealistic Textured 3D Mesh">🌟 Textured</button>
+        <button class="chip" id="mode-wireframe" title="Pure Articulated Wireframe Rig">💀 Wireframe</button>
+      </div>
       <div class="hint-drag">🖱 Drag to Orbit 3D</div>
       <canvas id="skeleton-canvas" width="460" height="420"></canvas>
       <div class="hud-metrics">
         <div class="metrics-row">
           <span>Pose: Roll <b id="s-roll">0.0°</b> Pitch <b id="s-pitch">0.0°</b></span>
           <span>Yaw: <b id="s-yaw">0.0°</b></span>
-          <span>Rig: <b>52 ARKit / 72 Pts</b></span>
+          <span>Rig: <b>52 FACS / 118 Pts (Torso + Hand)</b></span>
         </div>
         <div class="param-gauges">
           <div class="param-item">
@@ -481,9 +509,43 @@
 
     // 1. Instantiate Canonical 52-Parameter Facial Skeleton Model
     const skeletonModel = new FacialSkeletonModel();
+    window.skeletonModel = skeletonModel;
 
     // 2. Instantiate 3D Facial Skeleton Renderer
     const skeletonRenderer = new FacialSkeletonRenderer(skeletonCanvas, skeletonModel);
+    window.skeletonRenderer = skeletonRenderer;
+
+    // Panel 2 Render Mode Controller
+    const skeletonBadge = document.getElementById("skeleton-badge");
+    const modeHybridBtn = document.getElementById("mode-hybrid");
+    const modeTexturedBtn = document.getElementById("mode-textured");
+    const modeWireframeBtn = document.getElementById("mode-wireframe");
+    const modeBtns = [modeHybridBtn, modeTexturedBtn, modeWireframeBtn];
+
+    function setPanel2Mode(activeBtn, mode) {
+      modeBtns.forEach(b => b.classList.remove("active"));
+      activeBtn.classList.add("active");
+      skeletonRenderer.setRenderMode(mode);
+      if (mode === "textured") {
+        skeletonBadge.textContent = "🌟 3D TEXTURED MESH AVATAR";
+      } else if (mode === "wireframe") {
+        skeletonBadge.textContent = "💀 3D WIREFRAME RIG (118 PTS)";
+      } else {
+        skeletonBadge.textContent = "⚡ X-RAY HYBRID (MESH + RIG)";
+      }
+    }
+
+    modeHybridBtn.addEventListener("click", () => setPanel2Mode(modeHybridBtn, "hybrid"));
+    modeTexturedBtn.addEventListener("click", () => setPanel2Mode(modeTexturedBtn, "textured"));
+    modeWireframeBtn.addEventListener("click", () => setPanel2Mode(modeWireframeBtn, "wireframe"));
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const initMode = urlParams.get("mode");
+    if (initMode === "textured") {
+      setPanel2Mode(modeTexturedBtn, "textured");
+    } else if (initMode === "wireframe") {
+      setPanel2Mode(modeWireframeBtn, "wireframe");
+    }
 
     // 3. Instantiate Neural Photo Avatar Renderer
     const photoRenderer = new PhotoAvatarRenderer(photoCanvas, {
