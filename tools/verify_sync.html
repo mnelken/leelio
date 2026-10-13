@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Verification: Video Sync Trajectory</title>
+</head>
+<body>
+  <h1>Video Sync Trajectory Verification</h1>
+  <pre id="output"></pre>
+  <script type="module">
+    import { targetSyncTrajectory } from "../src/targetSyncTrajectory.js";
+
+    const out = document.getElementById("output");
+    function log(msg) {
+      out.textContent += msg + "\n";
+      console.log(msg);
+    }
+
+    log("Total Frames: " + targetSyncTrajectory.totalFrames);
+    log("Duration: " + targetSyncTrajectory.duration + "s");
+
+    const timestamps = [0.0, 0.45, 1.2, 1.8, 2.5, 3.5, 4.2];
+    timestamps.forEach(t => {
+      const pose = targetSyncTrajectory.evaluate(t);
+      log(`\n--- t = ${t.toFixed(2)}s ---`);
+      log(`Roll (rad): ${pose.roll.toFixed(4)} (~${(pose.roll * 180 / Math.PI).toFixed(2)} deg)`);
+      log(`Pitch: ${pose.pitch.toFixed(4)}`);
+      log(`Yaw: ${pose.yaw.toFixed(4)}`);
+      log(`Jaw: ${pose.jaw.toFixed(4)}`);
+      log(`Spread: ${pose.spread.toFixed(4)}`);
+      log(`Smile: ${pose.smile.toFixed(4)}`);
+      log(`CheekSquint: ${pose.cheekSquint.toFixed(4)}`);
+      log(`TeethExposure: ${pose.teethExposure.toFixed(4)}`);
+      log(`BrowLift: ${pose.browLift.toFixed(4)}`);
+      log(`AudioRMS: ${pose.audioRms.toFixed(4)}`);
+    });
+
+    window.VERIFICATION_COMPLETE = true;
+  </script>
+</body>
+</html>

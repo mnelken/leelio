@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Target Video Sync Analyzer</title>
+  <style>
+    body { background: #0d1117; color: #c9d1d9; font-family: monospace; padding: 20px; }
+    h1 { color: #58a6ff; font-size: 1.2rem; }
+    #status { color: #f39c12; font-weight: bold; margin: 10px 0; }
+    #log { background: #161b22; border: 1px solid #30363d; padding: 10px; height: 180px; overflow-y: scroll; font-size: 11px; }
+  </style>
+</head>
+<body>
+  <h1>Target Video Sync Analyzer</h1>
+  <div id="status">Initializing...</div>
+  <video id="source-video" src="/avatar_video.mp4" playsinline muted width="320" height="175"></video>
+  <canvas id="analysis-canvas" width="512" height="280"></canvas>
+  <div id="log"></div>
+
+  <script>
+    const logEl = document.getElementById("log");
+    const statusEl = document.getElementById("status");
+    const video = document.getElementById("source-video");
+    const canvas = document.getElementById("analysis-canvas");
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+
+    function log(msg) {
+      console.log("[Analyzer] " + msg);
+      const line = document.createElement("div");
+      line.textContent = `[${new Date().toISOString().substring(14, 21)}] ${msg}`;
+      logEl.appendChild(line);
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    async function runAnalysis() {
+      try {
+        log("Calling video.load()...");
+        statusEl.textContent = "Loading video...";
+        video.load();
+
+        if (video.readyState < 1) {
+          await Promise.race([
+            new Promise(res => { video.onloadedmetadata = res; }),
+            new Promise((_, rej) => setTimeout(() => rej(new Error("Video load timeout")), 8000))
+          ]);
+        }
+
+        const duration = video.duration || 3.96;
+        log(`Video ready! Duration: ${duration.toFixed(3)}s, Dimensions: ${video.videoWidth}x${video.videoHeight}`);
+
+        // 1. Audio Analysis via decodeAudioData using OfflineAudioContext (no user gesture required)
+        log("Fetching audio data...");
+        let audioRmsArray = [];
+        try {
+          const resp = await fetch("/avatar_video.mp4");
+          const buf = await resp.arrayBuffer();
+          const offlineCtx = new (window.OfflineAudioContext || window.webkitOfflineAudioContext)(1, 44100, 44100);
+          const audioBuffer = await offlineCtx.decodeAudioData(buf);
+          const channelData = audioBuffer.getChannelData(0);
+          const sampleRate = audioBuffer.sampleRate;
+          const windowSize = Math.floor(sampleRate / 30); // 30 fps bins
+          for (let i = 0; i < channelData.length; i += windowSize) {
+            let sumSq = 0;
+            const end = Math.min(i + windowSize, channelData.length);
+            for (let j = i; j < end; j++) sumSq += channelData[j] * channelData[j];
+            audioRmsArray.push(Math.sqrt(sumSq / (end - i)));
+          }
+          log(`Audio extracted: ${audioRmsArray.length} RMS bins`);
+        } catch (e) {
+          log("Audio decode notice: " + e.message);
+        }
+
+        // 2. Frame-by-frame analysis
+        const fps = 30;
+        const totalFrames = Math.floor(duration * fps);
+        log(`Analyzing ${totalFrames} frames...`);
+        const frameData = [];
+
+        let baselineCapY = 38.0;
+        let baselineChinY = 138.0;
+        let baselineBrimSlope = 0.0;
+
+        for (let frameIdx = 0; frameIdx < totalFrames; frameIdx++) {
+          const t = frameIdx / fps;
+
+          // Seek
+          await new Promise(resolve => {
+            const onSeeked = () => {
+              video.removeEventListener("seeked", onSeeked);
+              resolve();
+            };
+            video.addEventListener("seeked", onSeeked);
+            video.currentTime = t;
+          });
+
+          // Draw
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          const d = imgData.data;
+          const w = canvas.width;
+
+          function getPixel(x, y) {
+            const idx = (Math.floor(y) * w + Math.floor(x)) * 4;
+            return { r: d[idx], g: d[idx+1], b: d[idx+2] };
+          }
+
+          // A. Head Roll (Angle of cap gold visor braid)
+          let leftBrimY = 0, leftCount = 0;
+          let rightBrimY = 0, rightCount = 0;
+          for (let x = 210; x <= 230; x += 3) {
+            for (let y = 52; y <= 78; y++) {
+              const p = getPixel(x, y);
+              if (p.r > 130 && p.g > 105 && p.b < 75) { leftBrimY += y; leftCount++; }
+            }
+          }
+          for (let x = 320; x <= 340; x += 3) {
+            for (let y = 52; y <= 78; y++) {
+              const p = getPixel(x, y);
+              if (p.r > 130 && p.g > 105 && p.b < 75) { rightBrimY += y; rightCount++; }
+            }
+          }
+          const avgLeftY = leftCount > 0 ? (leftBrimY / leftCount) : 65.0;
+          const avgRightY = rightCount > 0 ? (rightBrimY / rightCount) : 65.0;
+          const brimSlope = (avgRightY - avgLeftY) / 110.0;
+          if (frameIdx === 0) baselineBrimSlope = brimSlope;
+          const rollDegrees = (brimSlope - baselineBrimSlope) * 57.2958 * 1.35;
+
+          // B. Head Pitch (Cap emblem to chin vertical distance)
+          let capEmblemY = 38.0;
+          let capSamples = 0, capYSum = 0;
+          for (let x = 265; x <= 285; x += 2) {
+            for (let y = 25; y <= 50; y += 2) {
+              const p = getPixel(x, y);
+              if (p.r > 160 && p.g > 130 && p.b < 90) { capYSum += y; capSamples++; }
+            }
+          }
+          if (capSamples > 0) capEmblemY = capYSum / capSamples;
+
+          let chinY = 138.0;
+          for (let y = 145; y >= 125; y--) {
+            const p = getPixel(274, y);
+            if (p.r > 125 && p.g > 95 && p.b > 80) { chinY = y; break; }
+          }
+          if (frameIdx === 0) {
+            baselineCapY = capEmblemY;
+            baselineChinY = chinY;
+          }
+          const pitchVal = ((chinY - capEmblemY) - (baselineChinY - baselineCapY)) / 14.0;
+
+          // C. Mouth Open & Teeth Exposure (ROI: x: 250..300, y: 108..130)
+          let darkOral = 0, teethPix = 0;
+          let minLipX = 274, maxLipX = 274;
+          for (let y = 108; y <= 130; y++) {
+            for (let x = 250; x <= 300; x++) {
+              const p = getPixel(x, y);
+              const lum = 0.299 * p.r + 0.587 * p.g + 0.114 * p.b;
+              if (lum < 50 && p.r < 65 && p.g < 45 && p.b < 45) darkOral++;
+              if (p.r > 160 && p.g > 155 && p.b > 150 && Math.abs(p.r - p.g) < 20 && Math.abs(p.g - p.b) < 20 && y <= 122) teethPix++;
+              if (p.r > 120 && p.r > p.g * 1.35) {
+                if (x < minLipX) minLipX = x;
+                if (x > maxLipX) maxLipX = x;
+              }
+            }
+          }
+          const mouthOpen = Math.min(1.0, Math.max(0.0, (darkOral - 10) / 95.0));
+          const teethExposure = Math.min(1.0, Math.max(0.0, teethPix / 45.0));
+          const mouthWidth = maxLipX - minLipX;
+          const mouthSmile = Math.min(1.0, Math.max(0.0, (mouthWidth - 34.0) / 16.0));
+          const pucker = (mouthOpen > 0.15 && mouthWidth < 40.0) ? Math.min(1.0, (40.0 - mouthWidth) / 10.0) : 0.0;
+
+          // D. Cheek Squint
+          let cheekLum = 0, cheekCount = 0;
+          for (let x = 232; x <= 245; x += 2) {
+            for (let y = 88; y <= 104; y += 2) {
+              const pL = getPixel(x, y);
+              const pR = getPixel(w - x, y);
+              cheekLum += (pL.r + pL.g + pL.b + pR.r + pR.g + pR.b) / 6;
+              cheekCount++;
+            }
+          }
+          const avgCheekLum = cheekCount > 0 ? (cheekLum / cheekCount) : 140;
+          const cheekSquint = Math.min(1.0, Math.max(0.0, (avgCheekLum - 145.0) / 45.0));
+
+          const audioRms = audioRmsArray[frameIdx] || 0.0;
+
+          frameData.push({
+            frame: frameIdx,
+            t: parseFloat(t.toFixed(4)),
+            roll: parseFloat(rollDegrees.toFixed(3)),
+            pitch: parseFloat(pitchVal.toFixed(3)),
+            yaw: parseFloat((rollDegrees * -0.015).toFixed(3)),
+            mouthOpen: parseFloat(mouthOpen.toFixed(3)),
+            mouthSmile: parseFloat(mouthSmile.toFixed(3)),
+            teethExposure: parseFloat(teethExposure.toFixed(3)),
+            cheekSquint: parseFloat(cheekSquint.toFixed(3)),
+            pucker: parseFloat(pucker.toFixed(3)),
+            browLift: parseFloat(Math.min(1.0, Math.max(0.0, -pitchVal * 0.4 + mouthSmile * 0.3)).toFixed(3)),
+            audioRms: parseFloat(audioRms.toFixed(4))
+          });
+
+          if (frameIdx % 15 === 0) {
+            statusEl.textContent = `Analyzing frames ${frameIdx} / ${totalFrames}...`;
+            log(`Frame ${frameIdx} (${t.toFixed(2)}s): Roll=${rollDegrees.toFixed(1)}°, Open=${mouthOpen.toFixed(2)}, Smile=${mouthSmile.toFixed(2)}, Teeth=${teethExposure.toFixed(2)}`);
+          }
+        }
+
+        log(`Frames analysis complete! (${frameData.length} frames)`);
+        statusEl.textContent = "Saving analyzed trajectory to server...";
+
+        const payload = {
+          version: "1.0",
+          generatedAt: new Date().toISOString(),
+          duration: duration,
+          fps: fps,
+          totalFrames: frameData.length,
+          frames: frameData
+        };
+
+        const resp = await fetch("/api/save-sync", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        const resJson = await resp.json();
+        log(`Saved to src/targetSyncData.json! Server returned: ${JSON.stringify(resJson)}`);
+        statusEl.textContent = "🎉 SUCCESS: Analyzed target video & saved sync trajectory!";
+        statusEl.style.color = "#2ed573";
+        window.__ANALYSIS_DONE__ = payload;
+
+      } catch (err) {
+        log("FATAL: " + err.message);
+        statusEl.textContent = "Error: " + err.message;
+        statusEl.style.color = "#e74c3c";
+      }
+    }
+
+    window.addEventListener("DOMContentLoaded", () => {
+      setTimeout(runAnalysis, 200);
+    });
+  </script>
+</body>
+</html>

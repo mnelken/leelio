@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Side-by-Side Sync Verification</title>
+  <script src="/three.min.js"></script>
+  <style>
+    body {
+      margin: 0;
+      padding: 20px;
+      background: #0b0f19;
+      color: #fff;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    h1 {
+      margin: 0 0 10px 0;
+      font-size: 1.4rem;
+      color: #38ef7d;
+    }
+    .hud-info {
+      font-size: 13px;
+      color: #aaa;
+      margin-bottom: 16px;
+      text-align: center;
+    }
+    .hud-info span {
+      color: #f39c12;
+      font-weight: bold;
+    }
+    .comparison-container {
+      display: flex;
+      gap: 20px;
+      background: #141c2e;
+      padding: 16px;
+      border-radius: 12px;
+      border: 1px solid #1f2c47;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    }
+    .card {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      position: relative;
+    }
+    .badge {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      z-index: 10;
+      padding: 5px 12px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: bold;
+      letter-spacing: 0.5px;
+      background: rgba(0,0,0,0.7);
+      backdrop-filter: blur(6px);
+      border: 1px solid rgba(255,255,255,0.2);
+    }
+    .badge.left { border-color: #2ed573; color: #2ed573; }
+    .badge.right { border-color: #f39c12; color: #f39c12; }
+    canvas, video {
+      width: 512px;
+      height: 480px;
+      object-fit: cover;
+      border-radius: 8px;
+      background: #000;
+    }
+    .metrics {
+      margin-top: 10px;
+      font-family: monospace;
+      font-size: 12px;
+      color: #888;
+      width: 512px;
+      display: flex;
+      justify-content: space-between;
+    }
+  </style>
+</head>
+<body>
+  <h1>Leelio Neural Avatar • Kinematic Video Synchronization</h1>
+  <div class="hud-info">
+    Evaluation Target: <span id="target-time">t = 1.25s ("Jessica" - Peak Roll Tilt & Smile)</span> | Status: <span id="status" style="color: #2ed573;">INITIALIZING</span>
+  </div>
+
+  <div class="comparison-container">
+    <div class="card">
+      <div class="badge left">🌟 REAL-TIME NEURAL MIMIC (GLSL)</div>
+      <canvas id="photo-canvas" width="512" height="480"></canvas>
+      <div class="metrics" id="photo-metrics">Roll: 0° | Smile: 0.00 | Jaw: 0.00</div>
+    </div>
+
+    <div class="card">
+      <div class="badge right">🎯 TARGET VIDEO STREAM (HEYGEN)</div>
+      <video id="target-video" src="/avatar_video.mp4" playsinline muted autoplay loop preload="auto" width="512" height="480"></video>
+      <div class="metrics" id="video-metrics">Time: 0.00s | Ground Truth Keyframe</div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { PhotoAvatarRenderer } from "/src/photoAvatarRenderer.js";
+
+    const canvas = document.getElementById("photo-canvas");
+    const video = document.getElementById("target-video");
+    const statusEl = document.getElementById("status");
+    const photoMetrics = document.getElementById("photo-metrics");
+    const videoMetrics = document.getElementById("video-metrics");
+
+    const renderer = new PhotoAvatarRenderer(canvas);
+    renderer.syncWithVideo(video);
+
+    function updateHud() {
+      const rollDeg = (renderer.headRollCurrent * 180 / Math.PI).toFixed(1);
+      const smile = renderer.smileCurrent.toFixed(2);
+      const jaw = renderer.jawCurrent.toFixed(2);
+      const brow = renderer.browCurrent.toFixed(2);
+      photoMetrics.innerHTML = `Roll: <b>${rollDeg}°</b> | Smile: <b>${smile}</b> | Brow: <b>${brow}</b> | Jaw: <b>${jaw}</b>`;
+      videoMetrics.innerHTML = `Time: <b>${video.currentTime.toFixed(2)}s</b> | Target Ground Truth`;
+    }
+
+    async function run() {
+      statusEl.textContent = "SYNCHRONIZING (PHASE-LOCKED)";
+      try {
+        await video.play();
+      } catch(e) {
+        console.log("Auto play notice:", e);
+      }
+
+      // Track playback and seek to target frame ~1.25s
+      const targetTime = 1.25;
+      video.currentTime = targetTime;
+
+      // Allow renderer loop frames to track and snap
+      for (let i = 0; i < 30; i++) {
+        await new Promise(r => requestAnimationFrame(r));
+        updateHud();
+      }
+
+      // Pause at target frame for clean inspection
+      video.pause();
+      for (let i = 0; i < 10; i++) {
+        await new Promise(r => requestAnimationFrame(r));
+        updateHud();
+      }
+
+      statusEl.textContent = "SYNCHRONIZED (PHASE-LOCKED @ t=" + video.currentTime.toFixed(2) + "s)";
+      window.VERIFIED_READY = true;
+    }
+
+    video.addEventListener("loadeddata", () => run());
+    video.addEventListener("canplay", () => run(), { once: true });
+    // Fallback trigger in case events already fired
+    setTimeout(() => {
+      if (!window.VERIFIED_READY) run();
+    }, 800);
+  </script>
+</body>
+</html>

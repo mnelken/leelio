@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Test Runtime Sync</title>
+  <script src="/three.min.js"></script>
+</head>
+<body style="background:#111; color:#eee; font-family:monospace;">
+  <h2>Testing Video Phase Lock Runtime</h2>
+  <canvas id="c" width="400" height="400"></canvas>
+  <video id="v" src="/avatar_video.mp4" playsinline muted autoplay loop width="320"></video>
+  <pre id="out"></pre>
+  <script type="module">
+    import { PhotoAvatarRenderer } from "/src/photoAvatarRenderer.js";
+    const out = document.getElementById("out");
+    const video = document.getElementById("v");
+    const canvas = document.getElementById("c");
+
+    const renderer = new PhotoAvatarRenderer(canvas);
+    renderer.syncWithVideo(video);
+
+    function log(msg) {
+      out.textContent += msg + "\n";
+      console.log(msg);
+    }
+
+    video.onloadeddata = () => {
+      log("Video loaded data. Starting play...");
+      video.play().catch(e => log("Play err: " + e));
+    };
+
+    let samples = 0;
+    const interval = setInterval(() => {
+      const u = renderer.material?.uniforms;
+      const t = video.currentTime;
+      log(`t=${t.toFixed(2)}s | jawTarget=${renderer.jawTarget.toFixed(3)} | jawCurrent=${renderer.jawCurrent.toFixed(3)} | roll=${(renderer.headRollCurrent * 180 / Math.PI).toFixed(2)}deg | smile=${renderer.smileCurrent.toFixed(3)} | u_jawOpen=${u ? u.u_jawOpen.value.toFixed(3) : 'no-mat'}`);
+      samples++;
+      if (samples >= 15) {
+        clearInterval(interval);
+        window.TEST_DONE = true;
+      }
+    }, 250);
+  </script>
+</body>
+</html>

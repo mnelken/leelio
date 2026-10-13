@@ -13,6 +13,7 @@
  */
 
 const THREE = window.THREE;
+import { targetSyncTrajectory } from "./targetSyncTrajectory.js";
 
 export class PhotoAvatarRenderer {
   constructor(canvas, options = {}) {
@@ -56,8 +57,14 @@ export class PhotoAvatarRenderer {
     // Target Video Mimic Sequence State
     this.isMimicActive = false;
     this.mimicStartTime = 0;
-    this.mimicDuration = 4.15; // 4.15 seconds exact duration of Jessica's audio
+    this.mimicDuration = 4.46; // 4.46 seconds duration of Jessica target video
     this.mimicCallback = null;
+
+    // Video Phase-Lock State (Master-Slave Sync to Target Video)
+    this.videoSyncSource = null;
+    this.isSyncedToVideo = false;
+    this.lastSyncVideoTime = -1;
+    this.targetSync = targetSyncTrajectory;
 
     // Eyelid Blinking State
     this.blinkLeft = 0;
@@ -101,7 +108,8 @@ export class PhotoAvatarRenderer {
 
     // 3. Load Avatar Texture
     const loader = new THREE.TextureLoader();
-    loader.load("avatar.jpg", (tex) => {
+    const avatarUrl = new URL("../avatar.jpg", import.meta.url).href;
+    loader.load(avatarUrl, (tex) => {
       tex.generateMipmaps = true;
       tex.minFilter = THREE.LinearMipmapLinearFilter;
       tex.magFilter = THREE.LinearFilter;
@@ -291,114 +299,86 @@ export class PhotoAvatarRenderer {
         }
 
         // 6. HIGH-FIDELITY MOUTH & RADIANT SMILE ARTICULATION
-        // Mouth center: (551.0, 233.0), span: left 530, right 573
-        float mouthCx = 551.0;
-        float mouthCy = 233.0;
-        float mouthHw = 21.5 * (1.0 + 0.22 * u_mouthSpread + 0.14 * u_smile);
-
+        float mouthCx = 552.0;
+        float mouthHw = 20.0 * (1.0 + 0.16 * u_mouthSpread + 0.14 * u_smile);
         float tx = (P.x - mouthCx) / mouthHw;
         bool inMouthSpan = abs(tx) <= 1.0;
 
-        // Corner lift pulls lips into signature upward smile arch
-        float cornerLift = (u_smile * 4.6 + max(0.0, u_mouthSpread) * 1.8) * (tx * tx);
+        // Signature upward corner smile arch
+        float cornerLift = (u_smile * 3.8 + max(0.0, u_mouthSpread) * 1.5) * (tx * tx);
+        float lipSeamY = 229.0 - 1.8 * (tx * tx) - cornerLift;
 
-        // Vertical aperture opening
-        float maxAperture = 24.0 * u_jawOpen * (1.0 - 0.15 * abs(u_mouthSpread));
+        if (inMouthSpan && P.y >= 200.0 && P.y <= 275.0) {
+          float arch = sqrt(max(0.0, 1.0 - tx * tx));
+          float openGap = (12.0 * u_jawOpen + 4.0 * u_smile) * arch;
+          float yUpper = lipSeamY - openGap * (0.16 + 0.14 * u_smile);
+          float yLower = lipSeamY + openGap * 0.84;
 
-        // CHECK IF INSIDE OPENED ORAL CAVITY
-        if (inMouthSpan && (u_jawOpen > 0.01 || u_smile > 0.35)) {
-          float arch = sqrt(max(0.0, 1.0 - tx * tx)) * (1.0 - 0.10 * tx * tx);
-          float hOpen = maxAperture * arch;
+          // Inside oral cavity
+          if (openGap > 0.4 && P.y >= yUpper && P.y <= yLower) {
+            float gap = max(0.1, yLower - yUpper);
+            float t = (P.y - yUpper) / gap;
 
-          // Upper lip raises higher when smiling (revealing gleaming upper teeth)
-          float yUpper = mouthCy - hOpen * (0.22 + 0.20 * u_smile) - cornerLift;
-          float yLower = mouthCy + hOpen * (0.78 - 0.12 * u_smile) - cornerLift * 0.65;
+            // Deep natural oral cavity tones (throat / buccal cavity)
+            vec3 cavityCol = vec3(
+              (48.0 + 16.0 * sin(t * 3.14159)) / 255.0,
+              (14.0 + 5.0 * sin(t * 3.14159)) / 255.0,
+              (12.0 + 4.0 * sin(t * 3.14159)) / 255.0
+            );
 
-          if (P.y >= yUpper && P.y <= yLower) {
-            float relY = (P.y - yUpper) / max(0.01, yLower - yUpper);
-
-            // Curved maxilla arch for upper teeth
-            float teethArch = 1.0 - 0.22 * tx * tx;
-            float upperTeethH = (min(hOpen * 0.44, 7.2) + u_smile * 3.0) * teethArch;
-            bool inUpperTeeth = (P.y <= yUpper + upperTeethH) && (abs(tx) < 0.78);
-
-            // Lower teeth band emerges on wide open jaw
-            float lowerTeethH = min(hOpen * 0.24, 4.0) * smoothstep(0.35, 0.65, u_jawOpen);
-            bool inLowerTeeth = (P.y >= yLower - lowerTeethH) && (abs(tx) < 0.68) && (u_jawOpen > 0.35);
-
-            vec3 cavityCol = vec3(0.08, 0.015, 0.015); // Deep crimson throat
-
-            if (inUpperTeeth) {
-              // Clean, bright pearlescent upper teeth matching Jessica in video
-              float toothGrad = smoothstep(yUpper, yUpper + upperTeethH, P.y);
-              float incisorGroove = abs(sin(tx * 34.0));
-              vec3 toothColor = vec3(0.96, 0.94, 0.91) - vec3(toothGrad * 0.14 + (1.0 - smoothstep(0.0, 0.14, incisorGroove)) * 0.06);
-
-              // Specular enamel sheen
-              float enamelSheen = smoothstep(yUpper + 0.6, yUpper + 2.2, P.y) * smoothstep(yUpper + 4.8, yUpper + 2.2, P.y);
-              toothColor += vec3(0.08, 0.07, 0.06) * enamelSheen;
-
-              // Soft philtrum / upper lip shadow
-              float topLipShadow = smoothstep(yUpper, yUpper + 1.2, P.y);
-              cavityCol = mix(vec3(0.28, 0.08, 0.08), toothColor, topLipShadow);
-            } else if (inLowerTeeth) {
-              float toothGrad = smoothstep(yLower, yLower - lowerTeethH, P.y);
-              vec3 toothColor = vec3(0.93, 0.90, 0.86) - vec3(toothGrad * 0.14);
-              cavityCol = mix(cavityCol, toothColor, 0.85);
-            } else if (relY > 0.52) {
-              float tongueGrad = smoothstep(0.52, 1.0, relY);
-              cavityCol = mix(cavityCol, vec3(0.52, 0.19, 0.19), tongueGrad * 0.80);
+            // Natural radiant incisor enamel sheen
+            if (t > 0.02 && t < 0.68 && openGap > 2.0) {
+              float teethT = sin(clamp((t - 0.02) / 0.64, 0.0, 1.0) * 3.14159);
+              float toothGroove = sin(tx * 30.0) * 0.06;
+              float teethWeight = clamp((teethT - toothGroove), 0.0, 1.0) * (0.60 + 0.38 * u_smile) * smoothstep(0.85, 0.20, abs(tx));
+              vec3 toothColor = vec3(218.0 / 255.0, 212.0 / 255.0, 204.0 / 255.0);
+              // Shadow under upper lip
+              float lipShadow = smoothstep(0.02, 0.14, t);
+              cavityCol = mix(cavityCol, toothColor * lipShadow, teethWeight);
             }
 
             // Lip rim occlusion shadow
-            float edgeDist = min(P.y - yUpper, yLower - P.y);
-            float rimShadow = smoothstep(0.0, 1.8, edgeDist);
-            cavityCol *= (0.45 + 0.55 * rimShadow);
+            float edgeShadow = sqrt(max(0.0, sin(t * 3.14159)));
+            cavityCol *= (0.60 + 0.40 * edgeShadow);
 
             gl_FragColor = vec4(cavityCol, 1.0);
             return;
           }
-        }
 
-        // 7. CONTINUOUS FACIAL SKIN & JAW DEFORMATION (OUTSIDE APERTURE)
-        if (u_jawOpen > 0.01 || u_smile > 0.01) {
-          // A. Mandibular Jaw Drop
-          float chinH = smoothstep(45.0, 0.0, abs(P.x - mouthCx));
-          float chinV = smoothstep(234.0, 256.0, P.y) * smoothstep(276.0, 260.0, P.y);
-          float jawDisplacement = (maxAperture * 0.52) * chinH * chinV;
-          P.y -= jawDisplacement;
-
-          // B. Lower Lip Skin Descent & Smile Corner Elevation
-          if (P.y >= mouthCy && inMouthSpan) {
-            float arch = sqrt(max(0.0, 1.0 - tx * tx)) * (1.0 - 0.10 * tx * tx);
-            float hOpen = maxAperture * arch;
-            float yLower = mouthCy + hOpen * (0.78 - 0.12 * u_smile) - cornerLift * 0.65;
-
-            if (P.y >= yLower) {
-              float lipFalloff = smoothstep(262.0, yLower, P.y);
-              float lipDescent = (hOpen * 0.78) * lipFalloff;
-              P.y -= lipDescent;
-              P.y += cornerLift * 0.65 * lipFalloff;
-
-              float spreadDisp = tx * (u_mouthSpread * 2.2 + u_smile * 1.6) * smoothstep(255.0, yLower, P.y);
-              P.x -= spreadDisp;
+          // Outside cavity: lower lip vermilion & chin descent
+          if (P.y > lipSeamY && openGap > 0.4) {
+            float yRim = lipSeamY + openGap * 0.84;
+            if (P.y >= yRim) {
+              float lowerLipThick = 10.0;
+              float lowerDisp = (yRim - lipSeamY);
+              if (P.y <= yRim + lowerLipThick) {
+                float lipProgress = (P.y - yRim) / lowerLipThick;
+                // Sample from lower lip vermilion rather than dark seam crevice
+                P.y = (lipSeamY + 2.2) + lipProgress * (lowerLipThick - 2.2);
+              } else {
+                float chinDist = P.y - (yRim + lowerLipThick);
+                float chinRange = 275.0 - (yRim + lowerLipThick);
+                float falloff = clamp(1.0 - chinDist / max(1.0, chinRange), 0.0, 1.0);
+                falloff = falloff * falloff * (3.0 - 2.0 * falloff);
+                P.y -= lowerDisp * falloff;
+              }
+            }
+          } else if (P.y < lipSeamY && openGap > 0.4) {
+            float yRim = lipSeamY - openGap * (0.16 + 0.14 * u_smile);
+            if (P.y <= yRim) {
+              float dist = yRim - P.y;
+              float falloff = clamp(1.0 - dist / 14.0, 0.0, 1.0);
+              falloff = falloff * (3.0 - 2.0 * falloff);
+              // Sample from upper lip vermilion rather than dark seam crevice
+              P.y += (openGap * (0.16 + 0.14 * u_smile) - 1.2) * falloff;
             }
           }
-          // C. Upper Lip Subtle Lift & Corner Elevation
-          else if (P.y < mouthCy && inMouthSpan) {
-            float arch = sqrt(max(0.0, 1.0 - tx * tx)) * (1.0 - 0.10 * tx * tx);
-            float hOpen = maxAperture * arch;
-            float yUpper = mouthCy - hOpen * (0.22 + 0.20 * u_smile) - cornerLift;
 
-            if (P.y <= yUpper) {
-              float liftFalloff = smoothstep(216.0, yUpper, P.y);
-              float lipLift = (hOpen * 0.22 + u_smile * 2.6) * liftFalloff;
-              P.y += lipLift;
-              P.y += cornerLift * liftFalloff;
-
-              float spreadDisp = tx * (u_mouthSpread * 1.5 + u_smile * 1.2) * smoothstep(216.0, yUpper, P.y);
-              P.x -= spreadDisp;
-            }
+          // Lateral mouth spread modulation
+          if (abs(u_mouthSpread) > 0.01 && P.y >= 222.0 && P.y <= 245.0) {
+            float spreadInfluence = clamp(1.0 - abs(P.y - 229.0) / 12.0, 0.0, 1.0);
+            float spreadDisp = tx * u_mouthSpread * 2.5 * spreadInfluence;
+            P.x -= spreadDisp;
           }
         }
 
@@ -524,6 +504,29 @@ export class PhotoAvatarRenderer {
   }
 
   /**
+   * Phase-lock the real-time neural avatar directly to a video element's timeline.
+   * @param {HTMLVideoElement} videoElement
+   */
+  syncWithVideo(videoElement) {
+    this.videoSyncSource = videoElement;
+    this.isSyncedToVideo = true;
+    this.lastSyncVideoTime = -1;
+    this.setSpeakingState(true);
+    console.log("[PhotoAvatarRenderer] Phase-locked to target video stream.");
+  }
+
+  /**
+   * Disconnect video synchronization and resume natural conversational/idle physics.
+   */
+  unsyncVideo() {
+    this.videoSyncSource = null;
+    this.isSyncedToVideo = false;
+    this.lastSyncVideoTime = -1;
+    this.setSpeakingState(false);
+    console.log("[PhotoAvatarRenderer] Disconnected video phase-lock.");
+  }
+
+  /**
    * Execute exact Target Video Mimic trajectory (Jessica: "Hello, I'm Jessica. I fell from the sky...")
    */
   playTargetMimicSequence(onComplete) {
@@ -534,83 +537,8 @@ export class PhotoAvatarRenderer {
   }
 
   getMimicPose(elapsedSec) {
-    // Keyframe trajectory accurately modeled from Avatar IV Video.mp4
-    let jaw = 0;
-    let spread = 0;
-    let smile = 0.22;
-    let cheek = 0.14;
-    let roll = 0;
-    let pitch = 0;
-    let yaw = 0;
-    let brow = 0;
-
-    if (elapsedSec < 0.40) {
-      // Pre-speech breath & subtle nod
-      const p = elapsedSec / 0.40;
-      jaw = 0.08 * p;
-      smile = 0.30;
-      roll = 0.012 * p;
-      pitch = -0.015 * p;
-    } else if (elapsedSec < 0.85) {
-      // "Hello, I'm"
-      const p = (elapsedSec - 0.40) / 0.45;
-      jaw = 0.65 * Math.sin(p * Math.PI);
-      spread = 0.25;
-      smile = 0.72;
-      cheek = 0.60;
-      roll = 0.038;
-      pitch = 0.025; // nod on Hello
-      yaw = -0.015;
-      brow = 0.50;
-    } else if (elapsedSec < 1.45) {
-      // "Jessica" -> Radiant wide smile with upper teeth!
-      const p = (elapsedSec - 0.85) / 0.60;
-      jaw = 0.72 * Math.sin(p * Math.PI);
-      spread = 0.60;
-      smile = 0.95; // Peak Jessica smile
-      cheek = 0.85; // Duchenne cheek lift
-      roll = 0.045; // Characteristic tilt
-      pitch = 0.035;
-      yaw = -0.020;
-      brow = 0.65;
-    } else if (elapsedSec < 1.85) {
-      // Pause after Jessica
-      const p = (elapsedSec - 1.45) / 0.40;
-      jaw = 0.15;
-      smile = 0.55;
-      cheek = 0.40;
-      roll = 0.015 - 0.035 * p; // Rolling to the other side
-      pitch = -0.010;
-      yaw = 0.010;
-      brow = 0.20;
-    } else if (elapsedSec < 2.80) {
-      // "I fell from the sky and I'm"
-      const p = (elapsedSec - 1.85) / 0.95;
-      jaw = 0.55 + 0.35 * Math.sin(p * Math.PI * 2.0);
-      spread = 0.40 * Math.sin(p * Math.PI * 2.0);
-      smile = 0.82;
-      cheek = 0.70;
-      roll = -0.032;
-      pitch = -0.025 + 0.040 * Math.sin(p * Math.PI);
-      yaw = 0.020;
-      brow = 0.85; // High arched brow on "sky"
-    } else if (elapsedSec < 4.10) {
-      // "here to cause havoc." -> Playful smirk and nod
-      const p = (elapsedSec - 2.80) / 1.30;
-      jaw = 0.75 * Math.sin(p * Math.PI);
-      spread = 0.35;
-      smile = 0.88; // Playful smirk
-      cheek = 0.75;
-      roll = 0.024;
-      pitch = 0.038; // Knowing nod
-      yaw = -0.010;
-      brow = 0.45;
-    } else {
-      smile = 0.25;
-      cheek = 0.15;
-    }
-
-    return { jaw, spread, smile, cheek, roll, pitch, yaw, brow };
+    // Evaluated directly from ground-truth target video kinematics
+    return this.targetSync.evaluate(elapsedSec, false);
   }
 
   renderLoop(currentTime) {
@@ -630,19 +558,47 @@ export class PhotoAvatarRenderer {
 
     if (!this.isReady || !this.material) return;
 
-    // 1. Process Target Video Mimic Trajectory (if active)
-    if (this.isMimicActive) {
+    // 1. Process Video Phase-Lock OR Mimic OR Conversational Dynamics
+    if (this.isSyncedToVideo && this.videoSyncSource) {
+      const videoTime = this.videoSyncSource.currentTime || 0;
+      const pose = this.targetSync.evaluate(videoTime, true);
+
+      this.jawTarget = pose.jaw;
+      this.spreadTarget = pose.spread;
+      this.smileTarget = pose.smile;
+      this.cheekSquintTarget = pose.cheekSquint;
+      this.browTarget = pose.browLift;
+      this.headRollTarget = pose.roll;
+      this.headPitchTarget = pose.pitch;
+      this.headYawTarget = pose.yaw;
+
+      // Handle seeking / looping jumps smoothly
+      const timeJump = Math.abs(videoTime - this.lastSyncVideoTime);
+      const isJump = this.lastSyncVideoTime < 0 || timeJump > 0.35;
+      this.lastSyncVideoTime = videoTime;
+
+      if (isJump) {
+        this.jawCurrent = this.jawTarget;
+        this.spreadCurrent = this.spreadTarget;
+        this.smileCurrent = this.smileTarget;
+        this.cheekSquintCurrent = this.cheekSquintTarget;
+        this.browCurrent = this.browTarget;
+        this.headRollCurrent = this.headRollTarget;
+        this.headPitchCurrent = this.headPitchTarget;
+        this.headYawCurrent = this.headYawTarget;
+      }
+    } else if (this.isMimicActive) {
       const elapsed = (currentTime - this.mimicStartTime) / 1000;
       if (elapsed <= this.mimicDuration) {
-        const pose = this.getMimicPose(elapsed);
+        const pose = this.targetSync.evaluate(elapsed, false);
         this.jawTarget = pose.jaw;
         this.spreadTarget = pose.spread;
         this.smileTarget = pose.smile;
-        this.cheekSquintTarget = pose.cheek;
+        this.cheekSquintTarget = pose.cheekSquint;
         this.headRollTarget = pose.roll;
         this.headPitchTarget = pose.pitch;
         this.headYawTarget = pose.yaw;
-        this.browTarget = pose.brow;
+        this.browTarget = pose.browLift;
       } else {
         this.isMimicActive = false;
         this.setSpeakingState(false);
@@ -669,17 +625,19 @@ export class PhotoAvatarRenderer {
     }
 
     // 2. Snappy Physics Interpolation (Attack & Decay)
-    const lerpSpeed = (this.isSpeaking || this.isMimicActive) ? 24.0 : 12.0;
+    const lerpSpeed = this.isSyncedToVideo ? 38.0 : ((this.isSpeaking || this.isMimicActive) ? 24.0 : 12.0);
+    const rotSpeed = this.isSyncedToVideo ? 32.0 : 10.0;
+
     this.jawCurrent += (this.jawTarget - this.jawCurrent) * lerpSpeed * delta;
     this.spreadCurrent += (this.spreadTarget - this.spreadCurrent) * lerpSpeed * delta;
-    this.smileCurrent += (this.smileTarget - this.smileCurrent) * 16.0 * delta;
-    this.cheekSquintCurrent += (this.cheekSquintTarget - this.cheekSquintCurrent) * 16.0 * delta;
-    this.browCurrent += (this.browTarget - this.browCurrent) * 14.0 * delta;
+    this.smileCurrent += (this.smileTarget - this.smileCurrent) * 18.0 * delta;
+    this.cheekSquintCurrent += (this.cheekSquintTarget - this.cheekSquintCurrent) * 18.0 * delta;
+    this.browCurrent += (this.browTarget - this.browCurrent) * 18.0 * delta;
 
     // Head Skeletal Rotation Interpolation
-    this.headRollCurrent += (this.headRollTarget - this.headRollCurrent) * 10.0 * delta;
-    this.headPitchCurrent += (this.headPitchTarget - this.headPitchCurrent) * 10.0 * delta;
-    this.headYawCurrent += (this.headYawTarget - this.headYawCurrent) * 8.0 * delta;
+    this.headRollCurrent += (this.headRollTarget - this.headRollCurrent) * rotSpeed * delta;
+    this.headPitchCurrent += (this.headPitchTarget - this.headPitchCurrent) * rotSpeed * delta;
+    this.headYawCurrent += (this.headYawTarget - this.headYawCurrent) * rotSpeed * delta;
 
     // 3. Eye Blinking Lifecycle (Human curve + double blinks)
     if (!this.isBlinking && this.time >= this.nextBlinkTime) {

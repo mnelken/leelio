@@ -45,6 +45,8 @@ body, html {
   left: 0;
   object-fit: cover;
   object-position: center center;
+  cursor: pointer;
+  pointer-events: auto;
 }
 
 /* UI Overlay Layer */

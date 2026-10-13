@@ -17,6 +17,25 @@ public class Server {
             try {
                 String path = exchange.getRequestURI().getPath();
                 if (path.startsWith("/")) path = path.substring(1);
+
+                if ("POST".equalsIgnoreCase(exchange.getRequestMethod()) && (path.equals("api/save-sync") || path.equals("api/save-sync/"))) {
+                    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                    try (InputStream is = exchange.getRequestBody()) {
+                        byte[] buf = new byte[8192];
+                        int r;
+                        while ((r = is.read(buf)) != -1) baos.write(buf, 0, r);
+                    }
+                    File outFile = new File(rootDir, "src/targetSyncData.json");
+                    Files.write(outFile.toPath(), baos.toByteArray());
+                    byte[] ok = ("{\"status\":\"ok\",\"bytes\":" + baos.size() + "}").getBytes();
+                    exchange.getResponseHeaders().add("Content-Type", "application/json");
+                    exchange.getResponseHeaders().add("Access-Control-Allow-Origin", "*");
+                    exchange.sendResponseHeaders(200, ok.length);
+                    try (OutputStream os = exchange.getResponseBody()) { os.write(ok); }
+                    System.out.println(">>> Target sync data saved: " + baos.size() + " bytes to src/targetSyncData.json");
+                    return;
+                }
+
                 if (path.isEmpty()) path = "index.html";
 
                 File file = new File(rootDir, path);

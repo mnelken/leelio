@@ -169,6 +169,13 @@ function initApp() {
   // 5. Setup UI Event Handlers
   setupEvents();
 
+  // Check URL query parameter (e.g. ?mode=split)
+  const urlParams = new URLSearchParams(window.location.search);
+  const initialMode = urlParams.get("mode");
+  if (initialMode && ["photo", "split", "video", "mesh"].includes(initialMode)) {
+    setAvatarMode(initialMode);
+  }
+
   // Initial greeting
   dialogueBubble.textContent = "Hey! I'm Leelio. Great to meet you! How's your day going?";
   if (protocolVal) protocolVal.textContent = savedKey ? "Gemini 3.8 Live" : "Leelio Brain";
@@ -254,6 +261,7 @@ function setAvatarMode(mode) {
   if (mode === "photo") {
     if (canvasContainer) canvasContainer.classList.remove("split-mode");
     photoCanvas.style.display = "block";
+    if (photoRenderer) photoRenderer.unsyncVideo();
     if (videoAvatar) {
       videoAvatar.style.display = "none";
       videoAvatar.pause();
@@ -268,16 +276,27 @@ function setAvatarMode(mode) {
     photoCanvas.style.display = "block";
     if (videoAvatar) {
       videoAvatar.style.display = "block";
+      videoAvatar.loop = true;
+      if (photoRenderer) {
+        photoRenderer.syncWithVideo(videoAvatar);
+      }
       videoAvatar.play().catch(() => {});
     }
     webglCanvas.style.display = "none";
-    if (splitBadgeLeft) splitBadgeLeft.style.display = "block";
-    if (splitBadgeRight) splitBadgeRight.style.display = "block";
+    if (splitBadgeLeft) {
+      splitBadgeLeft.style.display = "block";
+      splitBadgeLeft.innerHTML = '🌟 Real-Time Neural Mimic <span style="font-size:0.75em; color:#2ed573;">● PHASE-LOCKED</span>';
+    }
+    if (splitBadgeRight) {
+      splitBadgeRight.style.display = "block";
+      splitBadgeRight.innerHTML = '🎯 Target Stream (HeyGen) <span style="font-size:0.75em; color:#f39c12;">● GROUND TRUTH</span>';
+    }
     if (avatarModeVal) avatarModeVal.textContent = "🎯 Side-by-Side";
     if (photoRenderer) photoRenderer.resize();
   } else if (mode === "video") {
     if (canvasContainer) canvasContainer.classList.remove("split-mode");
     photoCanvas.style.display = "none";
+    if (photoRenderer) photoRenderer.unsyncVideo();
     if (videoAvatar) {
       videoAvatar.style.display = "block";
       videoAvatar.currentTime = 0;
@@ -291,6 +310,7 @@ function setAvatarMode(mode) {
   } else if (mode === "mesh") {
     if (canvasContainer) canvasContainer.classList.remove("split-mode");
     photoCanvas.style.display = "none";
+    if (photoRenderer) photoRenderer.unsyncVideo();
     if (videoAvatar) {
       videoAvatar.style.display = "none";
       videoAvatar.pause();
@@ -314,7 +334,7 @@ function setAvatarMode(mode) {
 function playJessicaTargetAnimation() {
   const quote = "Hello, I'm Jessica. I fell from the sky and I'm here to cause havoc.";
   dialogueBubble.textContent = quote;
-  statusText.textContent = "TARGET ANIMATION // JESSICA HAVOC";
+  statusText.textContent = "TARGET ANIMATION // JESSICA HAVOC (SYNCED)";
   statusDot.style.background = "#f39c12";
 
   // If in 3D mesh mode, default to split mode so user can compare side-by-side
@@ -322,19 +342,19 @@ function playJessicaTargetAnimation() {
     setAvatarMode("split");
   }
 
-  // Trigger high-fidelity neural mimic sequence (skeletal roll tilt, nod, smile, and maxillary teeth arch)
-  if (photoRenderer) {
-    photoRenderer.playTargetMimicSequence();
-  }
-
-  // Synchronize target video stream with audio
+  // Phase-lock neural photo avatar to the video timeline
   if (videoAvatar) {
     videoAvatar.currentTime = 0;
     videoAvatar.muted = false;
+
+    if (photoRenderer) {
+      photoRenderer.syncWithVideo(videoAvatar);
+    }
+
     videoAvatar.play().then(() => {
       micBtn.classList.add("speaking");
       micLabel.textContent = "Speaking";
-      showDiagnostic("Playing authentic Jessica target mimic sequence synchronized with ground truth!");
+      showDiagnostic("Phase-locked neural avatar to Jessica target video stream (kinematic ground truth)!");
     }).catch(err => {
       console.warn("Audio autoplay blocked by browser policy, falling back to muted video + TTS:", err);
       videoAvatar.muted = true;
@@ -347,8 +367,12 @@ function playJessicaTargetAnimation() {
       micLabel.textContent = isConversationActive ? "Listening" : "Tap to Talk";
       statusText.textContent = isConversationActive ? "LISTENING // SPEAK FREELY" : "ONLINE // READY";
       statusDot.style.background = "#2ed573";
+      if (activeAvatarMode !== "split" && photoRenderer) {
+        photoRenderer.unsyncVideo();
+      }
     };
-  } else {
+  } else if (photoRenderer) {
+    photoRenderer.playTargetMimicSequence();
     localAudioEngine.speak(quote);
   }
 }
@@ -365,6 +389,17 @@ function setupEvents() {
         setAvatarMode("mesh");
       } else {
         setAvatarMode("photo");
+      }
+    });
+  }
+
+  // Tap video to toggle play/pause
+  if (videoAvatar) {
+    videoAvatar.addEventListener("click", () => {
+      if (videoAvatar.paused) {
+        videoAvatar.play().catch(() => {});
+      } else {
+        videoAvatar.pause();
       }
     });
   }
