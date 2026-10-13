@@ -546,6 +546,18 @@
     } else if (initMode === "wireframe") {
       setPanel2Mode(modeWireframeBtn, "wireframe");
     }
+    const initSeek = urlParams.get("t");
+    if (initSeek !== null) {
+      const seekTime = parseFloat(initSeek);
+      video.addEventListener("loadedmetadata", () => {
+        video.currentTime = seekTime;
+        video.pause();
+      }, { once: true });
+      if (video.readyState >= 1) {
+        video.currentTime = seekTime;
+        video.pause();
+      }
+    }
 
     // 3. Instantiate Neural Photo Avatar Renderer
     const photoRenderer = new PhotoAvatarRenderer(photoCanvas, {

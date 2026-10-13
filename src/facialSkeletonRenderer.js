@@ -49,6 +49,7 @@ export class FacialSkeletonRenderer {
     this.linesMesh = null;
     this.pointsMesh = null;
     this.gimbalGroup = null;
+    this.backgroundMesh = null;
 
     // Buffer Geometries & Attributes
     this.meshGeom = null;
@@ -60,6 +61,7 @@ export class FacialSkeletonRenderer {
 
     // Textures & Materials
     this.avatarTexture = null;
+    this.bgTexture = null;
     this.meshMaterial = null;
 
     // Mouse Orbit State
@@ -97,6 +99,9 @@ export class FacialSkeletonRenderer {
     this.rigGroup = new THREE.Group();
     this.scene.add(this.rigGroup);
 
+    // 2b. Build Static Full-Frame Portrait Background Quad (Decoupled from rig)
+    this.buildBackground();
+
     // 3. Build 3D Textured Surface Mesh (Image mapped onto wireframe)
     this.buildSurfaceMesh();
 
@@ -117,6 +122,42 @@ export class FacialSkeletonRenderer {
 
     // Handle Resize
     window.addEventListener("resize", () => this.handleResize());
+  }
+
+  buildBackground() {
+    // Exact mathematical bounding quad covering portrait frame (1024x559)
+    // Width = 9.1592, Height = 5.0, Center = (-0.295, -0.922, -0.55)
+    const bgGeom = new THREE.PlaneGeometry(9.1592, 5.0);
+    const textureLoader = new THREE.TextureLoader();
+    const bgUrl = new URL("../background_plate.jpg", import.meta.url).href;
+
+    this.bgTexture = textureLoader.load(
+      bgUrl,
+      (tex) => {
+        tex.generateMipmaps = true;
+        tex.minFilter = THREE.LinearMipmapLinearFilter;
+        tex.magFilter = THREE.LinearFilter;
+        tex.wrapS = THREE.ClampToEdgeWrapping;
+        tex.wrapT = THREE.ClampToEdgeWrapping;
+        if (this.backgroundMesh && this.backgroundMesh.material) {
+          this.backgroundMesh.material.map = tex;
+          this.backgroundMesh.material.needsUpdate = true;
+        }
+      },
+      undefined,
+      (err) => {
+        console.warn("[FacialSkeletonRenderer] Background plate loading warning:", err);
+      }
+    );
+
+    const bgMat = new THREE.MeshBasicMaterial({
+      map: this.bgTexture,
+      side: THREE.FrontSide,
+      depthWrite: false
+    });
+    this.backgroundMesh = new THREE.Mesh(bgGeom, bgMat);
+    this.backgroundMesh.position.set(-0.295, -0.922, -0.55);
+    this.scene.add(this.backgroundMesh);
   }
 
   buildSurfaceMesh() {
@@ -238,12 +279,12 @@ export class FacialSkeletonRenderer {
       return [0.20, 1.00, 0.45]; // Neon Lime / Hand Skeleton
     }
     // Peaked Military Cap
-    if (minIdx >= 106 && maxIdx <= 111) {
+    if (minIdx >= 106 && maxIdx <= 113) {
       return [0.70, 0.35, 1.0]; // Imperial Violet
     }
-    // Frame / Canvas Anchors
-    if (maxIdx >= 112) {
-      return [0.20, 0.25, 0.35]; // Translucent Slate
+    // Hair Locks
+    if (minIdx >= 114 && maxIdx <= 117) {
+      return [1.00, 0.55, 0.10]; // Flame Orange
     }
     // Facial biomechanical struts
     return [0.25, 0.45, 0.75]; // Subdued Steel Blue
@@ -325,10 +366,10 @@ export class FacialSkeletonRenderer {
         colors[i * 3] = 1.0; colors[i * 3 + 1] = 0.55; colors[i * 3 + 2] = 0.0;
       } else if (i >= 85 && i <= 105) { // 21-Joint Hand
         colors[i * 3] = 0.2; colors[i * 3 + 1] = 1.0; colors[i * 3 + 2] = 0.45;
-      } else if (i >= 106 && i <= 111) { // Cap
+      } else if (i >= 106 && i <= 113) { // Cap
         colors[i * 3] = 0.7; colors[i * 3 + 1] = 0.35; colors[i * 3 + 2] = 1.0;
-      } else if (i >= 112) { // Frame
-        colors[i * 3] = 0.3; colors[i * 3 + 1] = 0.35; colors[i * 3 + 2] = 0.45;
+      } else if (i >= 114 && i <= 117) { // Hair Locks
+        colors[i * 3] = 1.0; colors[i * 3 + 1] = 0.55; colors[i * 3 + 2] = 0.10;
       } else {
         colors[i * 3] = 0.9; colors[i * 3 + 1] = 0.95; colors[i * 3 + 2] = 1.0;
       }
@@ -410,17 +451,32 @@ export class FacialSkeletonRenderer {
       if (this.linesMesh) this.linesMesh.visible = false;
       if (this.pointsMesh) this.pointsMesh.visible = false;
       if (this.gimbalGroup) this.gimbalGroup.visible = false;
+      if (this.backgroundMesh) {
+        this.backgroundMesh.visible = true;
+        this.backgroundMesh.material.opacity = 1.0;
+        this.backgroundMesh.material.transparent = false;
+      }
     } else if (mode === "wireframe") {
       if (this.surfaceMesh) this.surfaceMesh.visible = false;
       if (this.linesMesh) this.linesMesh.visible = true;
       if (this.pointsMesh) this.pointsMesh.visible = true;
       if (this.gimbalGroup) this.gimbalGroup.visible = true;
+      if (this.backgroundMesh) {
+        this.backgroundMesh.visible = true;
+        this.backgroundMesh.material.opacity = 0.35;
+        this.backgroundMesh.material.transparent = true;
+      }
     } else {
       // 'hybrid' (default)
       if (this.surfaceMesh) this.surfaceMesh.visible = true;
       if (this.linesMesh) this.linesMesh.visible = true;
       if (this.pointsMesh) this.pointsMesh.visible = true;
       if (this.gimbalGroup) this.gimbalGroup.visible = true;
+      if (this.backgroundMesh) {
+        this.backgroundMesh.visible = true;
+        this.backgroundMesh.material.opacity = 1.0;
+        this.backgroundMesh.material.transparent = false;
+      }
     }
   }
 
@@ -582,8 +638,15 @@ export class FacialSkeletonRenderer {
       this.pointsMesh.geometry.dispose();
       this.pointsMesh.material.dispose();
     }
+    if (this.backgroundMesh) {
+      this.backgroundMesh.geometry.dispose();
+      this.backgroundMesh.material.dispose();
+    }
     if (this.avatarTexture) {
       this.avatarTexture.dispose();
+    }
+    if (this.bgTexture) {
+      this.bgTexture.dispose();
     }
     if (this.renderer) {
       this.renderer.dispose();
