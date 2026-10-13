@@ -1,0 +1,29 @@
+# Byte-compiled / Java artifacts
+*.class
+
+# Android Build artifacts & intermediate outputs
+android-build/build/
+android-build/tools/
+android-build/app/src/main/assets/
+*.apk
+public/*.apk
+
+# Calibration & test output images
+test_*.png
+
+# Node & Web Build artifacts
+node_modules/
+dist/
+.vite/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# System & IDE artifacts
+.DS_Store
+Thumbs.db
+*.tmp
+*.bak
+.idea/
+.vscode/
+*.swp

@@ -1,0 +1,18 @@
+{
+  "name": "ai-avatar-studio",
+  "version": "1.0.0",
+  "description": "Real-Time 3D & 2D Conversational AI Avatar running on WebGL",
+  "type": "module",
+  "scripts": {
+    "start": "powershell -ExecutionPolicy Bypass -File ./start-server.ps1",
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "three": "^0.160.0"
+  },
+  "devDependencies": {
+    "vite": "^5.0.0"
+  }
+}

@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Leelio - Conversational 3D AI Avatar</title>
+  <link rel="stylesheet" href="src/style.css">
+  <!-- Three.js & GLTFLoader Libraries (Local Offline Support) -->
+  <script src="three.min.js"></script>
+  <script src="GLTFLoader.js"></script>
+</head>
+<body>
+  <!-- Avatar Canvas Layer (Photo & 3D WebGL) -->
+  <div id="canvas-container">
+    <canvas id="photo-canvas"></canvas>
+    <canvas id="webgl-canvas" style="display: none;"></canvas>
+  </div>
+
+  <!-- Interactive HUD Layer -->
+  <div class="ui-layer">
+    <!-- Header Bar -->
+    <header class="header-bar interactive">
+      <div class="brand-section">
+        <div class="brand-badge">L</div>
+        <div class="brand-info">
+          <h1>Leelio</h1>
+          <div class="status-tag">
+            <span class="status-dot" id="status-dot"></span>
+            <span id="status-text">ONLINE // READY</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="hud-stats">
+        <button class="hud-badge avatar-btn" id="avatar-mode-btn" title="Click to switch avatar model" style="cursor: pointer; background: rgba(243, 156, 18, 0.15); border: 1px solid var(--accent-orange); color: white;">
+          AVATAR: <span class="val" id="avatar-mode-val" style="color: var(--accent-orange); font-weight: bold;">🌟 Original Photo</span>
+        </button>
+        <div class="hud-badge">GPU: <span class="val" id="fps-val">60 FPS</span></div>
+        <a href="Leelio.apk" download="Leelio.apk" class="hud-badge" style="cursor: pointer; background: rgba(46, 204, 113, 0.15); border: 1px solid #2ecc71; color: white; text-decoration: none; display: inline-flex; align-items: center; gap: 4px;" title="Download Android APK (Self-Contained)">
+          📱 <span style="color: #2ecc71; font-weight: bold;">APK</span>
+        </a>
+        <button class="toggle-btn" id="settings-btn" title="Settings">
+          ⚙ Config
+        </button>
+      </div>
+    </header>
+
+    <!-- Diagnostic Banner for Permissions / Mic Status -->
+    <div id="diagnostic-banner" class="diagnostic-banner interactive"></div>
+
+    <!-- Subtitle / Dialogue Bubble -->
+    <main class="dialogue-container interactive">
+      <div class="speaker-tag">Conversation</div>
+      <div class="dialogue-bubble" id="dialogue-bubble">
+        Hey! I'm Leelio. Great to meet you! How's your day going?
+      </div>
+      <div class="user-transcript" id="user-transcript"></div>
+    </main>
+
+    <!-- Bottom Controls & Voice Trigger -->
+    <footer class="controls-bar interactive">
+      <!-- Live Microphone Volume Meter -->
+      <div class="mic-meter-container" id="mic-meter-container">
+        <span>🎤 Voice Input:</span>
+        <div class="mic-meter-track">
+          <div class="mic-meter-fill" id="mic-meter-fill"></div>
+        </div>
+      </div>
+
+      <!-- Main Hands-Free Conversation Button -->
+      <button class="main-action-btn" id="main-action-btn">
+        🎙️ Start Voice Conversation
+      </button>
+
+      <!-- Quick Action Chips -->
+      <div class="quick-chips">
+        <button class="chip" data-prompt="Hey Leelio!">👋 Hey Leelio!</button>
+        <button class="chip" data-prompt="Who are you?">👤 Who are you?</button>
+        <button class="chip" data-prompt="Tell me a joke">😄 Tell me a joke</button>
+        <button class="chip" data-prompt="What is the meaning of life?">🌌 Meaning of life?</button>
+      </div>
+
+      <!-- Secondary Controls: Manual Mic & Audio Visualizer -->
+      <div class="mic-section">
+        <button class="mic-button" id="mic-btn" title="Tap to Toggle Mic">
+          <svg viewBox="0 0 24 24">
+            <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.48 6-3.3 6-6.72h-1.7z"/>
+          </svg>
+          <span class="mic-label" id="mic-label">Tap to Talk</span>
+        </button>
+
+        <canvas class="visualizer-canvas" id="visualizer" width="140" height="40"></canvas>
+      </div>
+
+      <!-- Quick Text Input Fallback -->
+      <div style="display: flex; gap: 8px; max-width: 480px; width: 100%;">
+        <input type="text" id="text-input" placeholder="Type a message or tap the mic..." style="flex: 1; background: rgba(0,0,0,0.4); border: 1px solid var(--border-color); color: white; padding: 8px 14px; border-radius: 20px; font-size: 0.85rem; outline: none;">
+        <button id="send-text-btn" style="background: var(--accent-orange); border: none; color: white; padding: 8px 18px; border-radius: 20px; font-weight: bold; cursor: pointer; font-size: 0.85rem;">Send</button>
+      </div>
+    </footer>
+  </div>
+
+  <!-- Settings Modal -->
+  <div class="settings-panel interactive" id="settings-panel">
+    <div class="panel-header">
+      <h3>Settings & AI Link</h3>
+      <button class="close-btn" id="close-settings-btn">&times;</button>
+    </div>
+
+    <div class="setting-group">
+      <label for="gemini-key">Gemini API Key (Optional)</label>
+      <input type="password" id="gemini-key" placeholder="AIzaSy... (leave empty for built-in brain)">
+      <small style="color: var(--text-dim); font-size: 0.7rem;">Enter your Google AI Studio key for Gemini 3.8 Live real-time audio streaming, or leave blank to use Leelio's built-in brain.</small>
+    </div>
+
+    <button id="save-key-btn" style="background: var(--accent-orange); color: white; border: none; padding: 8px 12px; border-radius: 6px; font-weight: bold; cursor: pointer;">
+      Save Settings
+    </button>
+  </div>
+
+  <!-- Main JavaScript App -->
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>
