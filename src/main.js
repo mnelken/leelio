@@ -14,9 +14,12 @@ import { AudioEngine } from "./audioEngine.js";
 import { ConversationBrain } from "./conversationBrain.js";
 
 // DOM Elements
+const canvasContainer = document.getElementById("canvas-container");
 const photoCanvas = document.getElementById("photo-canvas");
 const videoAvatar = document.getElementById("video-avatar");
 const webglCanvas = document.getElementById("webgl-canvas");
+const splitBadgeLeft = document.getElementById("split-badge-left");
+const splitBadgeRight = document.getElementById("split-badge-right");
 const avatarModeBtn = document.getElementById("avatar-mode-btn");
 const avatarModeVal = document.getElementById("avatar-mode-val");
 const mainActionBtn = document.getElementById("main-action-btn");
@@ -45,7 +48,7 @@ const sendTextBtn = document.getElementById("send-text-btn");
 // App State
 let photoRenderer = null;
 let meshRenderer = null;
-let activeAvatarMode = "photo"; // "photo" (default original 2.5D), "video" (target animation), or "mesh" (3D)
+let activeAvatarMode = "photo"; // "photo" (neural mimic), "split" (side-by-side), "video" (target stream), or "mesh" (3D)
 let geminiLive = null;
 let localAudioEngine = null;
 let localBrain = null;
@@ -60,7 +63,7 @@ function initApp() {
   // 1. Initialize Original Photo Avatar Engine (Default 2.5D HeyGen-style portrait)
   photoRenderer = new PhotoAvatarRenderer(photoCanvas, {
     onFpsUpdate: (fps) => {
-      if (fpsVal && activeAvatarMode === "photo") fpsVal.textContent = `${fps} FPS`;
+      if (fpsVal && (activeAvatarMode === "photo" || activeAvatarMode === "split")) fpsVal.textContent = `${fps} FPS`;
     }
   });
 
@@ -88,7 +91,7 @@ function initApp() {
     onSpeakingChange: (isSpeaking) => {
       if (photoRenderer) photoRenderer.setSpeakingState(isSpeaking);
       if (meshRenderer) meshRenderer.setSpeakingState(isSpeaking);
-      if (videoAvatar && activeAvatarMode === "video") {
+      if (videoAvatar && (activeAvatarMode === "video" || activeAvatarMode === "split")) {
         if (isSpeaking) {
           videoAvatar.play().catch(() => {});
         } else {
@@ -139,7 +142,7 @@ function initApp() {
       if (state.isSpeaking) {
         photoRenderer?.setSpeakingState(true);
         meshRenderer?.setSpeakingState(true);
-        if (videoAvatar && activeAvatarMode === "video") {
+        if (videoAvatar && (activeAvatarMode === "video" || activeAvatarMode === "split")) {
           videoAvatar.play().catch(() => {});
         }
         micBtn.classList.add("speaking");
@@ -148,7 +151,7 @@ function initApp() {
       } else {
         photoRenderer?.setSpeakingState(false);
         meshRenderer?.setSpeakingState(false);
-        if (videoAvatar && activeAvatarMode === "video") {
+        if (videoAvatar && (activeAvatarMode === "video" || activeAvatarMode === "split")) {
           videoAvatar.pause();
         }
         micBtn.classList.remove("speaking");
@@ -249,15 +252,31 @@ function renderLoop() {
 function setAvatarMode(mode) {
   activeAvatarMode = mode;
   if (mode === "photo") {
+    if (canvasContainer) canvasContainer.classList.remove("split-mode");
     photoCanvas.style.display = "block";
     if (videoAvatar) {
       videoAvatar.style.display = "none";
       videoAvatar.pause();
     }
     webglCanvas.style.display = "none";
-    if (avatarModeVal) avatarModeVal.textContent = "🌟 Original Photo";
+    if (splitBadgeLeft) splitBadgeLeft.style.display = "none";
+    if (splitBadgeRight) splitBadgeRight.style.display = "none";
+    if (avatarModeVal) avatarModeVal.textContent = "🌟 Neural Mimic";
+    if (photoRenderer) photoRenderer.resize();
+  } else if (mode === "split") {
+    if (canvasContainer) canvasContainer.classList.add("split-mode");
+    photoCanvas.style.display = "block";
+    if (videoAvatar) {
+      videoAvatar.style.display = "block";
+      videoAvatar.play().catch(() => {});
+    }
+    webglCanvas.style.display = "none";
+    if (splitBadgeLeft) splitBadgeLeft.style.display = "block";
+    if (splitBadgeRight) splitBadgeRight.style.display = "block";
+    if (avatarModeVal) avatarModeVal.textContent = "🎯 Side-by-Side";
     if (photoRenderer) photoRenderer.resize();
   } else if (mode === "video") {
+    if (canvasContainer) canvasContainer.classList.remove("split-mode");
     photoCanvas.style.display = "none";
     if (videoAvatar) {
       videoAvatar.style.display = "block";
@@ -265,15 +284,20 @@ function setAvatarMode(mode) {
       videoAvatar.play().catch(e => console.log("Video playback waiting for user gesture:", e));
     }
     webglCanvas.style.display = "none";
-    if (avatarModeVal) avatarModeVal.textContent = "🎥 Video Avatar";
+    if (splitBadgeLeft) splitBadgeLeft.style.display = "none";
+    if (splitBadgeRight) splitBadgeRight.style.display = "none";
+    if (avatarModeVal) avatarModeVal.textContent = "🎥 Target Stream";
     if (fpsVal) fpsVal.textContent = "60 FPS";
   } else if (mode === "mesh") {
+    if (canvasContainer) canvasContainer.classList.remove("split-mode");
     photoCanvas.style.display = "none";
     if (videoAvatar) {
       videoAvatar.style.display = "none";
       videoAvatar.pause();
     }
     webglCanvas.style.display = "block";
+    if (splitBadgeLeft) splitBadgeLeft.style.display = "none";
+    if (splitBadgeRight) splitBadgeRight.style.display = "none";
     if (avatarModeVal) avatarModeVal.textContent = "🤖 3D Mesh";
     if (!meshRenderer) {
       meshRenderer = new AvatarRenderer(webglCanvas, {
@@ -293,15 +317,24 @@ function playJessicaTargetAnimation() {
   statusText.textContent = "TARGET ANIMATION // JESSICA HAVOC";
   statusDot.style.background = "#f39c12";
 
-  // Switch to Video Avatar mode to showcase the ground truth target animation
-  setAvatarMode("video");
+  // If in 3D mesh mode, default to split mode so user can compare side-by-side
+  if (activeAvatarMode === "mesh") {
+    setAvatarMode("split");
+  }
+
+  // Trigger high-fidelity neural mimic sequence (skeletal roll tilt, nod, smile, and maxillary teeth arch)
+  if (photoRenderer) {
+    photoRenderer.playTargetMimicSequence();
+  }
+
+  // Synchronize target video stream with audio
   if (videoAvatar) {
     videoAvatar.currentTime = 0;
     videoAvatar.muted = false;
     videoAvatar.play().then(() => {
       micBtn.classList.add("speaking");
       micLabel.textContent = "Speaking";
-      showDiagnostic("Playing authentic Jessica target animation video with synchronized audio!");
+      showDiagnostic("Playing authentic Jessica target mimic sequence synchronized with ground truth!");
     }).catch(err => {
       console.warn("Audio autoplay blocked by browser policy, falling back to muted video + TTS:", err);
       videoAvatar.muted = true;
@@ -321,10 +354,12 @@ function playJessicaTargetAnimation() {
 }
 
 function setupEvents() {
-  // Avatar Mode Toggle: 🌟 Original Photo <-> 🎥 Video Avatar <-> 🤖 3D Mesh
+  // Avatar Mode Toggle: 🌟 Neural Mimic <-> 🎯 Side-by-Side <-> 🎥 Target Stream <-> 🤖 3D Mesh
   if (avatarModeBtn) {
     avatarModeBtn.addEventListener("click", () => {
       if (activeAvatarMode === "photo") {
+        setAvatarMode("split");
+      } else if (activeAvatarMode === "split") {
         setAvatarMode("video");
       } else if (activeAvatarMode === "video") {
         setAvatarMode("mesh");
@@ -410,6 +445,12 @@ function setupEvents() {
       }
     });
   });
+
+  // Handle window resizing across all renderers & split mode
+  window.addEventListener("resize", () => {
+    if (photoRenderer) photoRenderer.resize();
+    if (meshRenderer) meshRenderer.onWindowResize();
+  });
 }
 
 async function startConversation() {
@@ -466,7 +507,7 @@ function stopConversation() {
 
   if (photoRenderer) photoRenderer.setSpeakingState(false);
   if (meshRenderer) meshRenderer.setSpeakingState(false);
-  if (videoAvatar && activeAvatarMode === "video") {
+  if (videoAvatar && (activeAvatarMode === "video" || activeAvatarMode === "split")) {
     videoAvatar.pause();
   }
 

@@ -466,3 +466,96 @@ body, html {
   backdrop-filter: blur(8px);
 }
 
+/* Split Comparison Mode (Side-by-Side: Real-Time Neural Mimic vs Target Video) */
+#canvas-container.split-mode {
+  display: block;
+}
+
+#canvas-container.split-mode #photo-canvas {
+  width: 50% !important;
+  height: 100% !important;
+  left: 0 !important;
+  top: 0 !important;
+  display: block !important;
+  border-right: 2px solid rgba(0, 242, 254, 0.4);
+  box-shadow: 4px 0 25px rgba(0, 0, 0, 0.5);
+}
+
+#canvas-container.split-mode #video-avatar {
+  width: 50% !important;
+  height: 100% !important;
+  left: 50% !important;
+  top: 0 !important;
+  display: block !important;
+  border-left: 2px solid rgba(243, 156, 18, 0.4);
+}
+
+#canvas-container.split-mode #webgl-canvas {
+  display: none !important;
+}
+
+/* Comparison Badges */
+.split-badge {
+  position: absolute;
+  z-index: 10;
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
+  pointer-events: none;
+  animation: fadeIn 0.3s ease-out;
+}
+
+.split-badge-left {
+  top: 75px;
+  left: 20px;
+  background: rgba(0, 242, 254, 0.22);
+  border: 1px solid rgba(0, 242, 254, 0.65);
+  color: #00f2fe;
+  text-shadow: 0 0 10px rgba(0, 242, 254, 0.5);
+}
+
+.split-badge-right {
+  top: 75px;
+  right: 20px;
+  background: rgba(243, 156, 18, 0.22);
+  border: 1px solid rgba(243, 156, 18, 0.65);
+  color: #f39c12;
+  text-shadow: 0 0 10px rgba(243, 156, 18, 0.5);
+}
+
+/* Portrait / Mobile Split Layout: Top vs Bottom */
+@media (max-width: 767px) {
+  #canvas-container.split-mode #photo-canvas {
+    width: 100% !important;
+    height: 50% !important;
+    left: 0 !important;
+    top: 0 !important;
+    border-right: none;
+    border-bottom: 2px solid rgba(0, 242, 254, 0.4);
+  }
+
+  #canvas-container.split-mode #video-avatar {
+    width: 100% !important;
+    height: 50% !important;
+    left: 0 !important;
+    top: 50% !important;
+    border-left: none;
+    border-top: 2px solid rgba(243, 156, 18, 0.4);
+  }
+
+  .split-badge-left {
+    top: 65px;
+    left: 12px;
+  }
+
+  .split-badge-right {
+    top: calc(50% + 15px);
+    left: 12px;
+    right: auto;
+  }
+}
+

@@ -285,6 +285,7 @@ export class AvatarRenderer {
 
     const jaw = Math.min(1.0, lipValues.jawOpen || 0);
     const spread = Math.min(1.0, lipValues.mouthSpread || 0);
+    const smile = Math.min(1.0, lipValues.smile !== undefined ? lipValues.smile : 0.20);
     const aa = Math.min(1.0, lipValues.visemeAA || 0);
     const o = Math.min(1.0, lipValues.visemeO || 0);
     const i = Math.min(1.0, lipValues.visemeI || 0);
@@ -293,11 +294,11 @@ export class AvatarRenderer {
     this.lipTargets.viseme_aa = aa * 0.75;
     this.lipTargets.viseme_O = o * 0.65;
     this.lipTargets.viseme_I = i * 0.55;
-    this.lipTargets.mouthSmileLeft = 0.14 + spread * 0.35;
-    this.lipTargets.mouthSmileRight = 0.14 + spread * 0.35;
+    this.lipTargets.mouthSmileLeft = 0.16 + smile * 0.55 + spread * 0.20;
+    this.lipTargets.mouthSmileRight = 0.16 + smile * 0.55 + spread * 0.20;
 
     // Subtle brow expressiveness during speech
-    this.lipTargets.browInnerUp = 0.05 + Math.min(0.2, jaw * 0.3);
+    this.lipTargets.browInnerUp = (lipValues.browLift !== undefined ? lipValues.browLift * 0.5 : 0.05) + Math.min(0.2, jaw * 0.3);
   }
 
   resetLipTargets() {

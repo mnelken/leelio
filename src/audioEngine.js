@@ -36,11 +36,13 @@ export class AudioEngine {
     this.lastSpokenText = "";
     this.lastSpokenTimestamp = 0;
 
-    // Lip sync state for avatar
+    // Lip sync state for avatar (HeyGen / Jessica target animation dynamics)
     this.lipSyncData = {
       jawOpen: 0,
       mouthSpread: 0,
       browLift: 0,
+      smile: 0.20,
+      cheekSquint: 0.12,
       volume: 0
     };
 
@@ -416,18 +418,24 @@ export class AudioEngine {
           const targetJaw = activeFrame.jawOpen;
           const targetSpread = activeFrame.mouthSpread;
           const targetBrow = activeFrame.browLift;
+          const targetSmile = activeFrame.smile !== undefined ? activeFrame.smile : 0.22;
+          const targetCheek = activeFrame.cheekSquint !== undefined ? activeFrame.cheekSquint : 0.14;
 
           // Snappy attack on consonant closures, natural spring release on open vowels
           const jawLerp = (targetJaw < this.lipSyncData.jawOpen) ? 0.38 : 0.48;
           this.lipSyncData.jawOpen += (targetJaw - this.lipSyncData.jawOpen) * jawLerp;
           this.lipSyncData.mouthSpread += (targetSpread - this.lipSyncData.mouthSpread) * 0.35;
           this.lipSyncData.browLift += (targetBrow - this.lipSyncData.browLift) * 0.25;
+          this.lipSyncData.smile += (targetSmile - this.lipSyncData.smile) * 0.28;
+          this.lipSyncData.cheekSquint += (targetCheek - this.lipSyncData.cheekSquint) * 0.28;
           this.lipSyncData.volume = Math.max(0.15, this.lipSyncData.jawOpen);
         } else if (elapsedMs >= timeline.totalDuration) {
-          // Beyond pre-calculated timeline, soft decay
+          // Beyond pre-calculated timeline, soft decay to resting warm posture
           this.lipSyncData.jawOpen *= 0.85;
           this.lipSyncData.mouthSpread *= 0.85;
           this.lipSyncData.browLift *= 0.85;
+          this.lipSyncData.smile += (0.20 - this.lipSyncData.smile) * 0.12;
+          this.lipSyncData.cheekSquint += (0.12 - this.lipSyncData.cheekSquint) * 0.12;
           this.lipSyncData.volume *= 0.85;
         }
 
@@ -497,44 +505,73 @@ export class AudioEngine {
         let jaw = 0.35;
         let spread = 0.0;
         let brow = 0.0;
+        let smile = 0.28;
+        let cheek = 0.18;
 
         if (chunk.includes("a") || chunk === "ah" || chunk === "aw") {
           jaw = 0.90; // Open wide for "Ah"!
-          spread = 0.15;
+          spread = 0.20;
           brow = 0.45;
+          smile = 0.65;
+          cheek = 0.50;
         } else if (chunk.includes("o") || chunk === "oh" || chunk === "ow") {
           jaw = 0.82;
           spread = -0.45; // Rounded mouth!
           brow = 0.40;
+          smile = 0.20;
+          cheek = 0.12;
         } else if (chunk.includes("u") || chunk === "oo") {
           jaw = 0.50;
           spread = -0.60; // Pursed lips!
+          smile = 0.15;
+          cheek = 0.10;
         } else if (chunk.includes("e") || chunk === "ee" || chunk === "ea") {
           jaw = 0.68;
           spread = 0.65; // Wide smile/spread!
-          brow = 0.30;
+          brow = 0.35;
+          smile = 0.85;
+          cheek = 0.75;
         } else if (chunk.includes("i") || chunk === "y") {
           jaw = 0.70;
-          spread = 0.40;
+          spread = 0.45;
+          smile = 0.78;
+          cheek = 0.65;
         } else if (chunk === "m" || chunk === "b" || chunk === "p") {
           // Bilabial closure: lips completely touch!
           jaw = 0.0;
           spread = 0.0;
+          smile = 0.35;
+          cheek = 0.25;
         } else if (chunk === "f" || chunk === "v") {
           jaw = 0.18;
           spread = 0.10;
+          smile = 0.40;
+          cheek = 0.30;
         } else if (chunk === "s" || chunk === "z" || chunk === "c" || chunk === "sh" || chunk === "ch") {
           jaw = 0.28;
-          spread = 0.45;
+          spread = 0.50;
+          smile = 0.70;
+          cheek = 0.55;
         } else if (chunk === "w") {
           jaw = 0.30;
           spread = -0.55;
+          smile = 0.20;
         } else if (chunk === "r") {
           jaw = 0.38;
           spread = -0.25;
+          smile = 0.25;
         } else {
           jaw = 0.35;
           spread = 0.20;
+          smile = 0.35;
+          cheek = 0.25;
+        }
+
+        // Friendly / energetic words boost smile like in HeyGen video
+        if (/hello|jessica|sky|havoc|great|happy|love|day|meet|friend|fun/.test(word)) {
+          smile = Math.min(1.0, smile + 0.30);
+          cheek = Math.min(1.0, cheek + 0.30);
+          brow = Math.min(1.0, brow + 0.20);
         }
 
         frames.push({
@@ -542,7 +579,9 @@ export class AudioEngine {
           duration: chunkDuration,
           jawOpen: jaw,
           mouthSpread: spread,
-          browLift: brow
+          browLift: brow,
+          smile: smile,
+          cheekSquint: cheek
         });
         currentTimeMs += chunkDuration;
       }
