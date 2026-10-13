@@ -22,6 +22,7 @@ yarn-error.log*
 # System & IDE artifacts
 .DS_Store
 Thumbs.db
+client_errors.log
 *.tmp
 *.bak
 .idea/

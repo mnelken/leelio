@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Leelio Neural Avatar • 3D Facial Skeleton & Kinematic Rig Player</title>
+  <script src="/src/errorReporter.js"></script>
   <script src="/three.min.js"></script>
   <style>
     :root {
@@ -623,35 +624,40 @@
       // 3. Update Skeleton Telemetry & Parameter Gauges
       const p = skeletonModel.parameters;
       const pose = skeletonModel.pose;
+      const safe = (v, d = 0) => (Number.isFinite(v) ? v : d);
 
-      sRoll.textContent = `${(pose.headRoll * 180 / Math.PI).toFixed(1)}°`;
-      sPitch.textContent = `${(pose.headPitch * 180 / Math.PI).toFixed(1)}°`;
-      sYaw.textContent = `${(pose.headYaw * 180 / Math.PI).toFixed(1)}°`;
+      sRoll.textContent = `${(safe(pose.headRoll) * 180 / Math.PI).toFixed(1)}°`;
+      sPitch.textContent = `${(safe(pose.headPitch) * 180 / Math.PI).toFixed(1)}°`;
+      sYaw.textContent = `${(safe(pose.headYaw) * 180 / Math.PI).toFixed(1)}°`;
 
-      barJawOpen.style.width = `${(p.jawOpen * 100).toFixed(0)}%`;
-      valJawOpen.textContent = p.jawOpen.toFixed(2);
+      const jawVal = safe(p.jawOpen);
+      barJawOpen.style.width = `${(jawVal * 100).toFixed(0)}%`;
+      valJawOpen.textContent = jawVal.toFixed(2);
 
-      const smileAvg = (p.mouthSmileLeft + p.mouthSmileRight) * 0.5;
+      const smileAvg = (safe(p.mouthSmileLeft) + safe(p.mouthSmileRight)) * 0.5;
       barMouthSmile.style.width = `${(smileAvg * 100).toFixed(0)}%`;
       valMouthSmile.textContent = smileAvg.toFixed(2);
 
-      barBrowInnerUp.style.width = `${(p.browInnerUp * 100).toFixed(0)}%`;
-      valBrowInnerUp.textContent = p.browInnerUp.toFixed(2);
+      const browVal = safe(p.browInnerUp);
+      barBrowInnerUp.style.width = `${(browVal * 100).toFixed(0)}%`;
+      valBrowInnerUp.textContent = browVal.toFixed(2);
 
-      const squintAvg = (p.cheekSquintLeft + p.cheekSquintRight) * 0.5;
+      const squintAvg = (safe(p.cheekSquintLeft) + safe(p.cheekSquintRight)) * 0.5;
       barCheekSquint.style.width = `${(squintAvg * 100).toFixed(0)}%`;
       valCheekSquint.textContent = squintAvg.toFixed(2);
 
-      barEyeBlink.style.width = `${(p.eyeBlinkLeft * 100).toFixed(0)}%`;
-      valEyeBlink.textContent = p.eyeBlinkLeft.toFixed(2);
+      const blinkVal = safe(p.eyeBlinkLeft);
+      barEyeBlink.style.width = `${(blinkVal * 100).toFixed(0)}%`;
+      valEyeBlink.textContent = blinkVal.toFixed(2);
 
-      barMouthPucker.style.width = `${(p.mouthPucker * 100).toFixed(0)}%`;
-      valMouthPucker.textContent = p.mouthPucker.toFixed(2);
+      const puckerVal = safe(p.mouthPucker);
+      barMouthPucker.style.width = `${(puckerVal * 100).toFixed(0)}%`;
+      valMouthPucker.textContent = puckerVal.toFixed(2);
 
       // 4. Update Avatar Telemetry
-      aSmile.textContent = photoRenderer.smileCurrent.toFixed(2);
-      aJaw.textContent = photoRenderer.jawCurrent.toFixed(2);
-      aRoll.textContent = `${(photoRenderer.headRollCurrent * 180 / Math.PI).toFixed(1)}°`;
+      aSmile.textContent = safe(photoRenderer.smileCurrent).toFixed(2);
+      aJaw.textContent = safe(photoRenderer.jawCurrent).toFixed(2);
+      aRoll.textContent = `${(safe(photoRenderer.headRollCurrent) * 180 / Math.PI).toFixed(1)}°`;
     }
 
     requestAnimationFrame(masterLoop);

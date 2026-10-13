@@ -588,17 +588,17 @@ export class PhotoAvatarRenderer {
     // 1. Process Skeleton Model Phase-Lock OR Video Phase-Lock OR Mimic OR Conversational Dynamics
     if (this.isSyncedToSkeleton && this.skeletonSource) {
       const p = this.skeletonSource.parameters;
-      const pose = this.skeletonSource.pose;
-
-      this.jawTarget = p.jawOpen || 0.0;
-      this.spreadTarget = (p.mouthStretchLeft || 0.0) - (p.mouthPucker || 0.0);
-      this.smileTarget = Math.max(0.18, ((p.mouthSmileLeft || 0.0) + (p.mouthSmileRight || 0.0)) * 0.5);
-      this.cheekSquintTarget = Math.max(0.12, ((p.cheekSquintLeft || 0.0) + (p.cheekSquintRight || 0.0)) * 0.5);
-      this.browTarget = p.browInnerUp || 0.0;
-      this.headRollTarget = pose.headRoll || 0.0;
-      this.headPitchTarget = pose.headPitch || 0.0;
-      this.headYawTarget = pose.headYaw || 0.0;
-      this.blinkLeft = p.eyeBlinkLeft || 0.0;
+      const pose = this.skeletonSource.pose || {};
+      const safe = (v, d = 0.0) => (Number.isFinite(v) ? v : d);
+      this.jawTarget = safe(p.jawOpen);
+      this.spreadTarget = safe(p.mouthStretchLeft) - safe(p.mouthPucker);
+      this.smileTarget = Math.max(0.18, (safe(p.mouthSmileLeft) + safe(p.mouthSmileRight)) * 0.5);
+      this.cheekSquintTarget = Math.max(0.12, (safe(p.cheekSquintLeft) + safe(p.cheekSquintRight)) * 0.5);
+      this.browTarget = safe(p.browInnerUp);
+      this.headRollTarget = safe(pose.headRoll);
+      this.headPitchTarget = safe(pose.headPitch);
+      this.headYawTarget = safe(pose.headYaw);
+      this.blinkLeft = safe(p.eyeBlinkLeft);
     } else if (this.isSyncedToVideo && this.videoSyncSource) {
       const videoTime = this.videoSyncSource.currentTime || 0;
       const pose = this.targetSync.evaluate(videoTime, true);
@@ -664,20 +664,25 @@ export class PhotoAvatarRenderer {
       this.headYawTarget = Math.sin(this.time * 0.5) * 0.008;
     }
 
-    // 2. Snappy Physics Interpolation (Attack & Decay)
+    // 2. Snappy Physics Interpolation (Attack & Decay) with unconditional stability (Exponential Smoothing)
     const lerpSpeed = (this.isSyncedToVideo || this.isSyncedToSkeleton) ? 38.0 : ((this.isSpeaking || this.isMimicActive) ? 24.0 : 12.0);
     const rotSpeed = (this.isSyncedToVideo || this.isSyncedToSkeleton) ? 32.0 : 10.0;
+    const expSpeed = 18.0;
 
-    this.jawCurrent += (this.jawTarget - this.jawCurrent) * lerpSpeed * delta;
-    this.spreadCurrent += (this.spreadTarget - this.spreadCurrent) * lerpSpeed * delta;
-    this.smileCurrent += (this.smileTarget - this.smileCurrent) * 18.0 * delta;
-    this.cheekSquintCurrent += (this.cheekSquintTarget - this.cheekSquintCurrent) * 18.0 * delta;
-    this.browCurrent += (this.browTarget - this.browCurrent) * 18.0 * delta;
+    const blendFactor = 1.0 - Math.exp(-lerpSpeed * delta);
+    const rotFactor = 1.0 - Math.exp(-rotSpeed * delta);
+    const expFactor = 1.0 - Math.exp(-expSpeed * delta);
+
+    this.jawCurrent = Math.max(0.0, Math.min(1.0, this.jawCurrent + (this.jawTarget - this.jawCurrent) * blendFactor));
+    this.spreadCurrent = Math.max(-1.0, Math.min(1.0, this.spreadCurrent + (this.spreadTarget - this.spreadCurrent) * blendFactor));
+    this.smileCurrent = Math.max(0.0, Math.min(1.0, this.smileCurrent + (this.smileTarget - this.smileCurrent) * expFactor));
+    this.cheekSquintCurrent = Math.max(0.0, Math.min(1.0, this.cheekSquintCurrent + (this.cheekSquintTarget - this.cheekSquintCurrent) * expFactor));
+    this.browCurrent = Math.max(-1.0, Math.min(1.0, this.browCurrent + (this.browTarget - this.browCurrent) * expFactor));
 
     // Head Skeletal Rotation Interpolation
-    this.headRollCurrent += (this.headRollTarget - this.headRollCurrent) * rotSpeed * delta;
-    this.headPitchCurrent += (this.headPitchTarget - this.headPitchCurrent) * rotSpeed * delta;
-    this.headYawCurrent += (this.headYawTarget - this.headYawCurrent) * rotSpeed * delta;
+    this.headRollCurrent += (this.headRollTarget - this.headRollCurrent) * rotFactor;
+    this.headPitchCurrent += (this.headPitchTarget - this.headPitchCurrent) * rotFactor;
+    this.headYawCurrent += (this.headYawTarget - this.headYawCurrent) * rotFactor;
 
     // 3. Eye Blinking Lifecycle (Human curve + double blinks)
     if (!this.isBlinking && this.time >= this.nextBlinkTime) {
@@ -719,19 +724,20 @@ export class PhotoAvatarRenderer {
     this.mouseCurrent.y += (targetGazeY - this.mouseCurrent.y) * 5.0 * delta;
 
     // 5. Update Shader Uniforms
+    const safe = (v, d = 0.0) => (Number.isFinite(v) ? v : d);
     const u = this.material.uniforms;
-    u.u_time.value = this.time;
-    u.u_jawOpen.value = Math.max(0.0, this.jawCurrent);
-    u.u_mouthSpread.value = this.spreadCurrent;
-    u.u_smile.value = Math.max(0.0, this.smileCurrent);
-    u.u_cheekSquint.value = Math.max(0.0, this.cheekSquintCurrent);
-    u.u_blink.value = this.blinkLeft;
-    u.u_browLift.value = Math.max(0.0, this.browCurrent);
-    u.u_headRoll.value = this.headRollCurrent;
-    u.u_headPitch.value = this.headPitchCurrent;
-    u.u_headYaw.value = this.headYawCurrent;
-    u.u_mouse.value.set(this.mouseCurrent.x, this.mouseCurrent.y);
-    u.u_breathing.value = Math.sin(this.time * 1.6);
+    u.u_time.value = safe(this.time);
+    u.u_jawOpen.value = Math.max(0.0, safe(this.jawCurrent));
+    u.u_mouthSpread.value = safe(this.spreadCurrent);
+    u.u_smile.value = Math.max(0.0, safe(this.smileCurrent));
+    u.u_cheekSquint.value = Math.max(0.0, safe(this.cheekSquintCurrent));
+    u.u_blink.value = safe(this.blinkLeft);
+    u.u_browLift.value = Math.max(0.0, safe(this.browCurrent));
+    u.u_headRoll.value = safe(this.headRollCurrent);
+    u.u_headPitch.value = safe(this.headPitchCurrent);
+    u.u_headYaw.value = safe(this.headYawCurrent);
+    u.u_mouse.value.set(safe(this.mouseCurrent.x), safe(this.mouseCurrent.y));
+    u.u_breathing.value = Math.sin(safe(this.time) * 1.6);
 
     // 6. Render Scene
     this.renderer.render(this.scene, this.camera);

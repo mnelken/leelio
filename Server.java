@@ -18,6 +18,72 @@ public class Server {
                 String path = exchange.getRequestURI().getPath();
                 if (path.startsWith("/")) path = path.substring(1);
 
+                // Handle global CORS preflight OPTIONS
+                if ("OPTIONS".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    Headers headers = exchange.getResponseHeaders();
+                    headers.add("Access-Control-Allow-Origin", "*");
+                    headers.add("Access-Control-Allow-Methods", "GET, POST, HEAD, OPTIONS");
+                    headers.add("Access-Control-Allow-Headers", "*");
+                    exchange.sendResponseHeaders(204, -1);
+                    return;
+                }
+
+                // Endpoint: Client Error Feedback Loop
+                if ("POST".equalsIgnoreCase(exchange.getRequestMethod()) && (path.equals("api/client-error") || path.equals("api/client-error/"))) {
+                    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                    try (InputStream is = exchange.getRequestBody()) {
+                        byte[] buf = new byte[4096];
+                        int r;
+                        while ((r = is.read(buf)) != -1) baos.write(buf, 0, r);
+                    }
+                    String errorPayload = new String(baos.toByteArray(), java.nio.charset.StandardCharsets.UTF_8);
+                    String timestamp = java.time.LocalDateTime.now().toString();
+                    String formattedLog = "[" + timestamp + "] [BROWSER-ERROR] " + errorPayload;
+                    
+                    System.err.println("\n-------------------------------------------------------");
+                    System.err.println("🚨 " + formattedLog);
+                    System.err.println("-------------------------------------------------------\n");
+
+                    try {
+                        File logFile = new File(rootDir, "client_errors.log");
+                        Files.writeString(logFile.toPath(), formattedLog + System.lineSeparator(),
+                            StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+                    } catch (Exception ignored) {}
+
+                    byte[] ok = "{\"status\":\"logged\"}".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                    Headers headers = exchange.getResponseHeaders();
+                    headers.add("Content-Type", "application/json");
+                    headers.add("Access-Control-Allow-Origin", "*");
+                    exchange.sendResponseHeaders(200, ok.length);
+                    try (OutputStream os = exchange.getResponseBody()) { os.write(ok); }
+                    return;
+                }
+
+                // Endpoint: Query recent client errors
+                if ("GET".equalsIgnoreCase(exchange.getRequestMethod()) && (path.equals("api/client-errors") || path.equals("api/client-errors/"))) {
+                    File logFile = new File(rootDir, "client_errors.log");
+                    byte[] resp = logFile.exists() ? Files.readAllBytes(logFile.toPath()) : "No client errors logged yet.\n".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                    Headers headers = exchange.getResponseHeaders();
+                    headers.add("Content-Type", "text/plain; charset=utf-8");
+                    headers.add("Access-Control-Allow-Origin", "*");
+                    exchange.sendResponseHeaders(200, resp.length);
+                    try (OutputStream os = exchange.getResponseBody()) { os.write(resp); }
+                    return;
+                }
+
+                // Endpoint: Clear client errors
+                if ("POST".equalsIgnoreCase(exchange.getRequestMethod()) && (path.equals("api/clear-client-errors") || path.equals("api/clear-client-errors/"))) {
+                    File logFile = new File(rootDir, "client_errors.log");
+                    if (logFile.exists()) logFile.delete();
+                    byte[] ok = "{\"status\":\"cleared\"}".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                    Headers headers = exchange.getResponseHeaders();
+                    headers.add("Content-Type", "application/json");
+                    headers.add("Access-Control-Allow-Origin", "*");
+                    exchange.sendResponseHeaders(200, ok.length);
+                    try (OutputStream os = exchange.getResponseBody()) { os.write(ok); }
+                    return;
+                }
+
                 if ("POST".equalsIgnoreCase(exchange.getRequestMethod()) && (path.equals("api/save-sync") || path.equals("api/save-sync/"))) {
                     ByteArrayOutputStream baos = new ByteArrayOutputStream();
                     try (InputStream is = exchange.getRequestBody()) {
@@ -36,6 +102,28 @@ public class Server {
                     return;
                 }
 
+                // Favicon clean handling
+                if (path.equals("favicon.ico")) {
+                    File favFile = new File(rootDir, "favicon.ico");
+                    if (!favFile.exists()) favFile = new File(publicDir, "favicon.ico");
+                    if (favFile.exists()) {
+                        Headers headers = exchange.getResponseHeaders();
+                        headers.add("Content-Type", "image/x-icon");
+                        headers.add("Access-Control-Allow-Origin", "*");
+                        exchange.sendResponseHeaders(200, favFile.length());
+                        try (OutputStream os = exchange.getResponseBody(); InputStream is = new FileInputStream(favFile)) {
+                            byte[] buf = new byte[4096];
+                            int r;
+                            while ((r = is.read(buf)) != -1) os.write(buf, 0, r);
+                        }
+                    } else {
+                        Headers headers = exchange.getResponseHeaders();
+                        headers.add("Access-Control-Allow-Origin", "*");
+                        exchange.sendResponseHeaders(204, -1);
+                    }
+                    return;
+                }
+
                 if (path.isEmpty()) path = "index.html";
 
                 File file = new File(rootDir, path);
@@ -51,11 +139,6 @@ public class Server {
                     headers.add("Access-Control-Allow-Origin", "*");
                     headers.add("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
                     headers.add("Access-Control-Allow-Headers", "*");
-
-                    if ("OPTIONS".equalsIgnoreCase(exchange.getRequestMethod())) {
-                        exchange.sendResponseHeaders(204, -1);
-                        return;
-                    }
 
                     if (file.getName().endsWith(".apk")) {
                         headers.add("Content-Disposition", "attachment; filename=\"Leelio.apk\"");
@@ -101,6 +184,7 @@ public class Server {
         if (lower.endsWith(".css")) return "text/css; charset=utf-8";
         if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
         if (lower.endsWith(".png")) return "image/png";
+        if (lower.endsWith(".ico")) return "image/x-icon";
         if (lower.endsWith(".svg")) return "image/svg+xml";
         if (lower.endsWith(".glb")) return "model/gltf-binary";
         if (lower.endsWith(".gltf")) return "model/gltf+json";

@@ -165,56 +165,71 @@ export class FacialSkeletonModel {
   updateFromTrajectory(evaluator, currentTime) {
     if (!evaluator) return;
     const sample = evaluator.evaluate(currentTime);
+    if (!sample) return;
+
+    // Helper to safely get finite number or fallback
+    const safeNum = (v, fallback = 0.0) => (Number.isFinite(v) ? v : fallback);
+    const clamp01 = (v) => Math.max(0.0, Math.min(1.0, safeNum(v, 0.0)));
 
     // 1. Cervical Head Pose
-    this.pose.headRoll = sample.rollRad;
-    this.pose.headPitch = sample.nodY * 0.14;
-    this.pose.headYaw = sample.yawX * 0.18;
-    this.pose.headPosX = sample.yawX * 0.08;
-    this.pose.headPosY = sample.nodY * 0.05;
+    const roll = safeNum(sample.roll, safeNum(sample.rollRad, 0.0));
+    const pitch = safeNum(sample.pitch, safeNum(sample.nodY, 0.0) * 0.14);
+    const yaw = safeNum(sample.yaw, safeNum(sample.yawX, 0.0) * 0.18);
+
+    this.pose.headRoll = roll;
+    this.pose.headPitch = pitch;
+    this.pose.headYaw = yaw;
+    this.pose.headPosX = safeNum(sample.posX, yaw * 0.08);
+    this.pose.headPosY = safeNum(sample.posY, pitch * 0.05);
+    this.pose.headPosZ = safeNum(sample.posZ, 0.0);
 
     // 2. Mandible / Jaw Parameters
-    const jawVal = Math.min(1.0, sample.jawOpen);
+    const jawVal = clamp01(sample.jaw !== undefined ? sample.jaw : sample.jawOpen);
     this.parameters.jawOpen = jawVal;
     this.parameters.mouthLowerDownLeft = jawVal * 0.55;
     this.parameters.mouthLowerDownRight = jawVal * 0.55;
     this.parameters.mouthFunnel = jawVal * 0.25;
 
     // 3. Zygomaticus / Smile & Cheek Parameters
-    const smileVal = Math.min(1.0, sample.smile);
+    const smileVal = clamp01(sample.smile);
+    const cheekSquintVal = clamp01(sample.cheekSquint !== undefined ? sample.cheekSquint : smileVal * 0.50);
     this.parameters.mouthSmileLeft = smileVal;
     this.parameters.mouthSmileRight = smileVal;
     this.parameters.mouthDimpleLeft = smileVal * 0.45;
     this.parameters.mouthDimpleRight = smileVal * 0.45;
-    this.parameters.cheekSquintLeft = smileVal * 0.50;
-    this.parameters.cheekSquintRight = smileVal * 0.50;
-    this.parameters.cheekPuff = smileVal * 0.22;
+    this.parameters.cheekSquintLeft = cheekSquintVal;
+    this.parameters.cheekSquintRight = cheekSquintVal;
+    this.parameters.cheekPuff = clamp01(smileVal * 0.22);
 
     // 4. Frontalis / Eyebrow Parameters
-    const browVal = Math.min(1.0, sample.browLift);
+    const browVal = clamp01(sample.browLift);
     this.parameters.browInnerUp = browVal * 0.85;
     this.parameters.browOuterUpLeft = browVal * 0.50;
     this.parameters.browOuterUpRight = browVal * 0.50;
 
     // 5. Palpebral / Eye Blink Parameters
-    const blinkVal = sample.blink || 0.0;
+    const blinkVal = clamp01(sample.blink);
     this.parameters.eyeBlinkLeft = blinkVal;
     this.parameters.eyeBlinkRight = blinkVal;
-    this.parameters.eyeSquintLeft = Math.max(blinkVal * 0.3, smileVal * 0.35);
-    this.parameters.eyeSquintRight = Math.max(blinkVal * 0.3, smileVal * 0.35);
+    this.parameters.eyeSquintLeft = Math.max(blinkVal * 0.3, cheekSquintVal * 0.35);
+    this.parameters.eyeSquintRight = Math.max(blinkVal * 0.3, cheekSquintVal * 0.35);
 
-    // 6. Mouth Spread & Pucker
-    if (sample.mouthSpread !== undefined) {
-      if (sample.mouthSpread > 0) {
-        this.parameters.mouthStretchLeft = Math.min(1.0, sample.mouthSpread * 0.7);
-        this.parameters.mouthStretchRight = Math.min(1.0, sample.mouthSpread * 0.7);
-        this.parameters.mouthPucker = 0.0;
-      } else {
-        this.parameters.mouthPucker = Math.min(1.0, -sample.mouthSpread * 0.8);
-        this.parameters.mouthStretchLeft = 0.0;
-        this.parameters.mouthStretchRight = 0.0;
-      }
+    // 6. Mouth Spread, Pucker & Teeth Exposure
+    const spreadVal = safeNum(sample.spread, safeNum(sample.mouthSpread, 0.0));
+    const puckerVal = clamp01(sample.pucker);
+    if (spreadVal > 0) {
+      this.parameters.mouthStretchLeft = clamp01(spreadVal * 0.7);
+      this.parameters.mouthStretchRight = clamp01(spreadVal * 0.7);
+      this.parameters.mouthPucker = puckerVal;
+    } else {
+      this.parameters.mouthPucker = Math.max(puckerVal, clamp01(-spreadVal * 0.8));
+      this.parameters.mouthStretchLeft = 0.0;
+      this.parameters.mouthStretchRight = 0.0;
     }
+
+    const teethVal = clamp01(sample.teethExposure);
+    this.parameters.mouthUpperUpLeft = teethVal * 0.40;
+    this.parameters.mouthUpperUpRight = teethVal * 0.40;
 
     // Recompute deformed 3D skeletal landmarks
     this.computeDeformedLandmarks();
@@ -227,14 +242,23 @@ export class FacialSkeletonModel {
     const p = this.parameters;
     const pose = this.pose;
 
+    // Ensure all pose values are finite numbers
+    const safeNum = (v, fallback = 0.0) => (Number.isFinite(v) ? v : fallback);
+    const headRoll = safeNum(pose.headRoll, 0.0);
+    const headPitch = safeNum(pose.headPitch, 0.0);
+    const headYaw = safeNum(pose.headYaw, 0.0);
+    const headPosX = safeNum(pose.headPosX, 0.0);
+    const headPosY = safeNum(pose.headPosY, 0.0);
+    const headPosZ = safeNum(pose.headPosZ, 0.0);
+
     // Head rotation matrix around cervical pivot (0, -1.15, -0.20)
     const pivot = [0.0, -1.15, -0.20];
-    const cosR = Math.cos(pose.headRoll);
-    const sinR = Math.sin(pose.headRoll);
-    const cosP = Math.cos(pose.headPitch);
-    const sinP = Math.sin(pose.headPitch);
-    const cosY = Math.cos(pose.headYaw);
-    const sinY = Math.sin(pose.headYaw);
+    const cosR = Math.cos(headRoll);
+    const sinR = Math.sin(headRoll);
+    const cosP = Math.cos(headPitch);
+    const sinP = Math.sin(headPitch);
+    const cosY = Math.cos(headYaw);
+    const sinY = Math.sin(headYaw);
 
     for (let i = 0; i < NEUTRAL_LANDMARKS_3D.length; i++) {
       const base = NEUTRAL_LANDMARKS_3D[i];
@@ -303,9 +327,13 @@ export class FacialSkeletonModel {
       let z3 = -x2 * sinY + z2 * cosY;
 
       // Translate back + head translation
-      this.deformedLandmarks[i][0] = x3 + pivot[0] + pose.headPosX;
-      this.deformedLandmarks[i][1] = y3 + pivot[1] + pose.headPosY;
-      this.deformedLandmarks[i][2] = z3 + pivot[2] + pose.headPosZ;
+      const finalX = x3 + pivot[0] + headPosX;
+      const finalY = y3 + pivot[1] + headPosY;
+      const finalZ = z3 + pivot[2] + headPosZ;
+
+      this.deformedLandmarks[i][0] = Number.isFinite(finalX) ? finalX : base[0];
+      this.deformedLandmarks[i][1] = Number.isFinite(finalY) ? finalY : base[1];
+      this.deformedLandmarks[i][2] = Number.isFinite(finalZ) ? finalZ : base[2];
     }
   }
 

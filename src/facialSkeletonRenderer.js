@@ -339,12 +339,14 @@ export class FacialSkeletonRenderer {
     const pointPos = this.pointPosAttr.array;
     const linePos = this.linePosAttr.array;
 
+    const safeNum = (v) => (Number.isFinite(v) ? v : 0.0);
+
     // 1. Update Points
     for (let i = 0; i < landmarks.length; i++) {
-      const p = landmarks[i];
-      pointPos[i * 3] = p[0];
-      pointPos[i * 3 + 1] = p[1];
-      pointPos[i * 3 + 2] = p[2];
+      const p = landmarks[i] || [0, 0, 0];
+      pointPos[i * 3] = safeNum(p[0]);
+      pointPos[i * 3 + 1] = safeNum(p[1]);
+      pointPos[i * 3 + 2] = safeNum(p[2]);
     }
     this.pointPosAttr.needsUpdate = true;
 
@@ -352,27 +354,31 @@ export class FacialSkeletonRenderer {
     const edgeCount = SKELETON_EDGES.length;
     for (let e = 0; e < edgeCount; e++) {
       const [idxA, idxB] = SKELETON_EDGES[e];
-      const pA = landmarks[idxA];
-      const pB = landmarks[idxB];
+      const pA = landmarks[idxA] || [0, 0, 0];
+      const pB = landmarks[idxB] || [0, 0, 0];
 
       const offA = (e * 2) * 3;
       const offB = (e * 2 + 1) * 3;
 
-      linePos[offA] = pA[0];
-      linePos[offA + 1] = pA[1];
-      linePos[offA + 2] = pA[2];
+      linePos[offA] = safeNum(pA[0]);
+      linePos[offA + 1] = safeNum(pA[1]);
+      linePos[offA + 2] = safeNum(pA[2]);
 
-      linePos[offB] = pB[0];
-      linePos[offB + 1] = pB[1];
-      linePos[offB + 2] = pB[2];
+      linePos[offB] = safeNum(pB[0]);
+      linePos[offB + 1] = safeNum(pB[1]);
+      linePos[offB + 2] = safeNum(pB[2]);
     }
     this.linePosAttr.needsUpdate = true;
 
+    // Safe recomputation of geometry bounding spheres to avoid NaN warnings
+    if (this.pointGeom) this.pointGeom.computeBoundingSphere();
+    if (this.lineGeom) this.lineGeom.computeBoundingSphere();
+
     // 3. Update Gimbal Orientation
-    const pose = this.skeleton.pose;
-    this.gimbalGroup.rotation.z = pose.headRoll;
-    this.gimbalGroup.rotation.x = pose.headPitch;
-    this.gimbalGroup.rotation.y = pose.headYaw;
+    const pose = this.skeleton.pose || {};
+    this.gimbalGroup.rotation.z = safeNum(pose.headRoll);
+    this.gimbalGroup.rotation.x = safeNum(pose.headPitch);
+    this.gimbalGroup.rotation.y = safeNum(pose.headYaw);
 
     // 4. Render
     this.renderer.render(this.scene, this.camera);
