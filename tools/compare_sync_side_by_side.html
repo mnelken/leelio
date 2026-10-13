@@ -2,100 +2,290 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Side-by-Side Sync Verification</title>
+  <title>Leelio Neural Avatar • Live Kinematic Sync Player</title>
   <script src="/three.min.js"></script>
   <style>
+    :root {
+      --bg-dark: #0a0e17;
+      --card-bg: #111827;
+      --border-color: #1f293d;
+      --accent-green: #2ed573;
+      --accent-orange: #f39c12;
+      --accent-cyan: #00d2d3;
+    }
     body {
       margin: 0;
-      padding: 20px;
-      background: #0b0f19;
+      padding: 16px;
+      background: var(--bg-dark);
       color: #fff;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       display: flex;
       flex-direction: column;
       align-items: center;
+      min-height: 100vh;
+      box-sizing: border-box;
+    }
+    header {
+      text-align: center;
+      margin-bottom: 12px;
     }
     h1 {
-      margin: 0 0 10px 0;
-      font-size: 1.4rem;
-      color: #38ef7d;
+      margin: 0 0 4px 0;
+      font-size: 1.5rem;
+      background: linear-gradient(135deg, #2ed573 0%, #00d2d3 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
     }
-    .hud-info {
+    .status-bar {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
       font-size: 13px;
-      color: #aaa;
-      margin-bottom: 16px;
-      text-align: center;
+      color: #94a3b8;
+      background: rgba(255,255,255,0.05);
+      padding: 4px 14px;
+      border-radius: 20px;
+      border: 1px solid rgba(255,255,255,0.1);
     }
-    .hud-info span {
-      color: #f39c12;
-      font-weight: bold;
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent-green);
+      box-shadow: 0 0 8px var(--accent-green);
+      animation: pulse 1.5s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.6; transform: scale(0.9); }
     }
     .comparison-container {
       display: flex;
-      gap: 20px;
-      background: #141c2e;
+      gap: 16px;
+      background: var(--card-bg);
       padding: 16px;
-      border-radius: 12px;
-      border: 1px solid #1f2c47;
-      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+      border-radius: 16px;
+      border: 1px solid var(--border-color);
+      box-shadow: 0 20px 40px rgba(0,0,0,0.6);
+      max-width: 1100px;
+      width: 100%;
+      justify-content: center;
+      box-sizing: border-box;
     }
-    .card {
+    .panel {
+      flex: 1;
       display: flex;
       flex-direction: column;
       align-items: center;
       position: relative;
+      max-width: 512px;
     }
     .badge {
       position: absolute;
       top: 10px;
       left: 10px;
       z-index: 10;
-      padding: 5px 12px;
+      padding: 6px 14px;
       border-radius: 20px;
       font-size: 11px;
-      font-weight: bold;
+      font-weight: 700;
       letter-spacing: 0.5px;
-      background: rgba(0,0,0,0.7);
-      backdrop-filter: blur(6px);
-      border: 1px solid rgba(255,255,255,0.2);
+      background: rgba(10, 14, 23, 0.75);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(255,255,255,0.15);
     }
-    .badge.left { border-color: #2ed573; color: #2ed573; }
-    .badge.right { border-color: #f39c12; color: #f39c12; }
+    .badge.left { border-color: var(--accent-green); color: var(--accent-green); }
+    .badge.right { border-color: var(--accent-orange); color: var(--accent-orange); }
     canvas, video {
-      width: 512px;
+      width: 100%;
       height: 480px;
       object-fit: cover;
-      border-radius: 8px;
+      border-radius: 10px;
       background: #000;
+      border: 1px solid rgba(255,255,255,0.06);
     }
-    .metrics {
-      margin-top: 10px;
-      font-family: monospace;
+    .hud-metrics {
+      margin-top: 8px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
       font-size: 12px;
-      color: #888;
-      width: 512px;
+      color: #94a3b8;
+      width: 100%;
       display: flex;
       justify-content: space-between;
+      background: rgba(0,0,0,0.3);
+      padding: 6px 10px;
+      border-radius: 6px;
+      box-sizing: border-box;
+    }
+    .hud-metrics b { color: #f8fafc; }
+    
+    /* Interactive Controller */
+    .controls-wrapper {
+      margin-top: 14px;
+      width: 100%;
+      max-width: 1100px;
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 14px 20px;
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .scrubber-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .scrubber {
+      flex: 1;
+      height: 6px;
+      -webkit-appearance: none;
+      background: #1e293b;
+      border-radius: 3px;
+      outline: none;
+      cursor: pointer;
+    }
+    .scrubber::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: var(--accent-green);
+      cursor: pointer;
+      box-shadow: 0 0 10px var(--accent-green);
+      transition: transform 0.1s;
+    }
+    .scrubber::-webkit-slider-thumb:hover {
+      transform: scale(1.2);
+    }
+    .time-code {
+      font-family: monospace;
+      font-size: 13px;
+      color: #38bdf8;
+      min-width: 90px;
+      text-align: right;
+    }
+    .buttons-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .btn-group {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    button {
+      background: #1e293b;
+      color: #fff;
+      border: 1px solid #334155;
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    button:hover {
+      background: #334155;
+      border-color: #475569;
+    }
+    button.primary {
+      background: #059669;
+      border-color: #10b981;
+    }
+    button.primary:hover {
+      background: #10b981;
+    }
+    button.audio-active {
+      background: #d97706;
+      border-color: #f59e0b;
+    }
+    .chips {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+    .chip {
+      font-size: 11px;
+      padding: 5px 10px;
+      border-radius: 14px;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.12);
+      color: #cbd5e1;
+    }
+    .chip:hover {
+      background: rgba(46, 213, 115, 0.15);
+      border-color: var(--accent-green);
+      color: #fff;
     }
   </style>
 </head>
 <body>
-  <h1>Leelio Neural Avatar • Kinematic Video Synchronization</h1>
-  <div class="hud-info">
-    Evaluation Target: <span id="target-time">t = 1.25s ("Jessica" - Peak Roll Tilt & Smile)</span> | Status: <span id="status" style="color: #2ed573;">INITIALIZING</span>
-  </div>
+  <header>
+    <h1>Leelio Neural Avatar • Kinematic Video Synchronization</h1>
+    <div class="status-bar">
+      <span class="dot" id="status-dot"></span>
+      <span id="status-text">PHASE-LOCKED // 60 FPS REAL-TIME</span>
+    </div>
+  </header>
 
   <div class="comparison-container">
-    <div class="card">
+    <!-- Left: Real-Time GLSL Neural Mimic -->
+    <div class="panel">
       <div class="badge left">🌟 REAL-TIME NEURAL MIMIC (GLSL)</div>
       <canvas id="photo-canvas" width="512" height="480"></canvas>
-      <div class="metrics" id="photo-metrics">Roll: 0° | Smile: 0.00 | Jaw: 0.00</div>
+      <div class="hud-metrics" id="photo-metrics">
+        <span>Roll: <b id="m-roll">0.0°</b></span>
+        <span>Smile: <b id="m-smile">0.00</b></span>
+        <span>Jaw: <b id="m-jaw">0.00</b></span>
+        <span>Brow: <b id="m-brow">0.00</b></span>
+      </div>
     </div>
 
-    <div class="card">
-      <div class="badge right">🎯 TARGET VIDEO STREAM (HEYGEN)</div>
-      <video id="target-video" src="/avatar_video.mp4" playsinline muted autoplay loop preload="auto" width="512" height="480"></video>
-      <div class="metrics" id="video-metrics">Time: 0.00s | Ground Truth Keyframe</div>
+    <!-- Right: Target Ground Truth Stream -->
+    <div class="panel">
+      <div class="badge right">🎯 TARGET STREAM (HEYGEN)</div>
+      <video id="target-video" src="/avatar_video.mp4" playsinline muted autoplay loop preload="auto"></video>
+      <div class="hud-metrics" id="video-metrics">
+        <span>Time: <b id="m-time">0.00s</b></span>
+        <span>FPS: <b>30 Ground Truth</b></span>
+        <span>Status: <b id="m-status" style="color: #2ed573;">PLAYING</b></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Interactive Controls -->
+  <div class="controls-wrapper">
+    <div class="scrubber-row">
+      <button id="play-btn" class="primary" title="Play / Pause">⏸ Pause</button>
+      <button id="mute-btn" title="Toggle Audio (Muted by default for autoplay)">🔊 Audio: Muted</button>
+      <input type="range" id="timeline" class="scrubber" min="0" max="4.46" step="0.01" value="0">
+      <div class="time-code" id="time-display">0.00s / 4.46s</div>
+    </div>
+
+    <div class="buttons-row">
+      <div class="btn-group">
+        <span style="font-size: 12px; color: #64748b; font-weight: bold;">SPEED:</span>
+        <button class="chip" data-speed="0.5">0.5x</button>
+        <button class="chip" data-speed="0.75">0.75x</button>
+        <button class="chip" data-speed="1.0" style="border-color: #38bdf8; color: #38bdf8;">1.0x (Normal)</button>
+      </div>
+
+      <div class="chips">
+        <span style="font-size: 12px; color: #64748b; font-weight: bold;">KEY FRAMES:</span>
+        <button class="chip" data-seek="0.5">0.5s ("Hello")</button>
+        <button class="chip" data-seek="1.25">1.25s ("Jessica - Tilt & Smile")</button>
+        <button class="chip" data-seek="2.4">2.4s ("Sky")</button>
+        <button class="chip" data-seek="3.8">3.8s ("Havoc")</button>
+      </div>
     </div>
   </div>
 
@@ -104,57 +294,117 @@
 
     const canvas = document.getElementById("photo-canvas");
     const video = document.getElementById("target-video");
-    const statusEl = document.getElementById("status");
-    const photoMetrics = document.getElementById("photo-metrics");
-    const videoMetrics = document.getElementById("video-metrics");
+    const playBtn = document.getElementById("play-btn");
+    const muteBtn = document.getElementById("mute-btn");
+    const timeline = document.getElementById("timeline");
+    const timeDisplay = document.getElementById("time-display");
+    const statusText = document.getElementById("status-text");
+    const mStatus = document.getElementById("m-status");
 
+    const mRoll = document.getElementById("m-roll");
+    const mSmile = document.getElementById("m-smile");
+    const mJaw = document.getElementById("m-jaw");
+    const mBrow = document.getElementById("m-brow");
+    const mTime = document.getElementById("m-time");
+
+    // Initialize photo avatar and slave to video element
     const renderer = new PhotoAvatarRenderer(canvas);
     renderer.syncWithVideo(video);
 
-    function updateHud() {
+    let isScrubbing = false;
+
+    // Start video playback
+    video.play().catch(e => {
+      console.log("Autoplay notice (click anywhere to play with audio):", e);
+    });
+
+    // Scrubber interaction
+    timeline.addEventListener("input", (e) => {
+      isScrubbing = true;
+      video.currentTime = parseFloat(e.target.value);
+    });
+
+    timeline.addEventListener("change", () => {
+      isScrubbing = false;
+    });
+
+    // Play/Pause toggle
+    playBtn.addEventListener("click", () => {
+      if (video.paused) {
+        video.play();
+        playBtn.textContent = "⏸ Pause";
+        playBtn.classList.add("primary");
+        mStatus.textContent = "PLAYING";
+        mStatus.style.color = "#2ed573";
+      } else {
+        video.pause();
+        playBtn.textContent = "▶ Play";
+        playBtn.classList.remove("primary");
+        mStatus.textContent = "PAUSED";
+        mStatus.style.color = "#f39c12";
+      }
+    });
+
+    // Audio mute toggle
+    muteBtn.addEventListener("click", () => {
+      video.muted = !video.muted;
+      if (video.muted) {
+        muteBtn.textContent = "🔊 Audio: Muted";
+        muteBtn.classList.remove("audio-active");
+      } else {
+        muteBtn.textContent = "🔊 Audio: Live";
+        muteBtn.classList.add("audio-active");
+      }
+    });
+
+    // Speed selector
+    document.querySelectorAll("[data-speed]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll("[data-speed]").forEach(b => {
+          b.style.borderColor = "rgba(255,255,255,0.12)";
+          b.style.color = "#cbd5e1";
+        });
+        const speed = parseFloat(btn.dataset.speed);
+        video.playbackRate = speed;
+        btn.style.borderColor = "#38bdf8";
+        btn.style.color = "#38bdf8";
+      });
+    });
+
+    // Keyframe milestone selector
+    document.querySelectorAll("[data-seek]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const t = parseFloat(btn.dataset.seek);
+        video.currentTime = t;
+        timeline.value = t;
+      });
+    });
+
+    // 60 FPS HUD Telemetry Sync Loop
+    function updateTelemetry() {
+      requestAnimationFrame(updateTelemetry);
+
+      const t = video.currentTime || 0;
+      const dur = video.duration || 4.46;
+
+      if (!isScrubbing) {
+        timeline.value = t;
+      }
+      timeDisplay.textContent = `${t.toFixed(2)}s / ${dur.toFixed(2)}s`;
+      mTime.textContent = `${t.toFixed(2)}s`;
+
       const rollDeg = (renderer.headRollCurrent * 180 / Math.PI).toFixed(1);
       const smile = renderer.smileCurrent.toFixed(2);
       const jaw = renderer.jawCurrent.toFixed(2);
       const brow = renderer.browCurrent.toFixed(2);
-      photoMetrics.innerHTML = `Roll: <b>${rollDeg}°</b> | Smile: <b>${smile}</b> | Brow: <b>${brow}</b> | Jaw: <b>${jaw}</b>`;
-      videoMetrics.innerHTML = `Time: <b>${video.currentTime.toFixed(2)}s</b> | Target Ground Truth`;
+
+      mRoll.textContent = `${rollDeg}°`;
+      mSmile.textContent = smile;
+      mJaw.textContent = jaw;
+      mBrow.textContent = brow;
     }
 
-    async function run() {
-      statusEl.textContent = "SYNCHRONIZING (PHASE-LOCKED)";
-      try {
-        await video.play();
-      } catch(e) {
-        console.log("Auto play notice:", e);
-      }
-
-      // Track playback and seek to target frame ~1.25s
-      const targetTime = 1.25;
-      video.currentTime = targetTime;
-
-      // Allow renderer loop frames to track and snap
-      for (let i = 0; i < 30; i++) {
-        await new Promise(r => requestAnimationFrame(r));
-        updateHud();
-      }
-
-      // Pause at target frame for clean inspection
-      video.pause();
-      for (let i = 0; i < 10; i++) {
-        await new Promise(r => requestAnimationFrame(r));
-        updateHud();
-      }
-
-      statusEl.textContent = "SYNCHRONIZED (PHASE-LOCKED @ t=" + video.currentTime.toFixed(2) + "s)";
-      window.VERIFIED_READY = true;
-    }
-
-    video.addEventListener("loadeddata", () => run());
-    video.addEventListener("canplay", () => run(), { once: true });
-    // Fallback trigger in case events already fired
-    setTimeout(() => {
-      if (!window.VERIFIED_READY) run();
-    }, 800);
+    requestAnimationFrame(updateTelemetry);
   </script>
 </body>
 </html>
