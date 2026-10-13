@@ -10,9 +10,10 @@
   <script src="GLTFLoader.js"></script>
 </head>
 <body>
-  <!-- Avatar Canvas Layer (Photo & 3D WebGL) -->
+  <!-- Avatar Canvas & Video Layer (Photo 2.5D, Video Avatar & 3D WebGL) -->
   <div id="canvas-container">
     <canvas id="photo-canvas"></canvas>
+    <video id="video-avatar" src="avatar_video.mp4" playsinline preload="auto" loop style="display: none;"></video>
     <canvas id="webgl-canvas" style="display: none;"></canvas>
   </div>
 
@@ -77,6 +78,7 @@
       <div class="quick-chips">
         <button class="chip" data-prompt="Hey Leelio!">👋 Hey Leelio!</button>
         <button class="chip" data-prompt="Who are you?">👤 Who are you?</button>
+        <button class="chip" data-prompt="Hello Jessica" id="chip-jessica" style="border-color: rgba(243, 156, 18, 0.6); color: #f39c12;">🎬 Jessica Havoc</button>
         <button class="chip" data-prompt="Tell me a joke">😄 Tell me a joke</button>
         <button class="chip" data-prompt="What is the meaning of life?">🌌 Meaning of life?</button>
       </div>

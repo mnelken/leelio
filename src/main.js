@@ -15,6 +15,7 @@ import { ConversationBrain } from "./conversationBrain.js";
 
 // DOM Elements
 const photoCanvas = document.getElementById("photo-canvas");
+const videoAvatar = document.getElementById("video-avatar");
 const webglCanvas = document.getElementById("webgl-canvas");
 const avatarModeBtn = document.getElementById("avatar-mode-btn");
 const avatarModeVal = document.getElementById("avatar-mode-val");
@@ -44,7 +45,7 @@ const sendTextBtn = document.getElementById("send-text-btn");
 // App State
 let photoRenderer = null;
 let meshRenderer = null;
-let activeAvatarMode = "photo"; // "photo" (default original avatar) or "mesh"
+let activeAvatarMode = "photo"; // "photo" (default original 2.5D), "video" (target animation), or "mesh" (3D)
 let geminiLive = null;
 let localAudioEngine = null;
 let localBrain = null;
@@ -87,6 +88,13 @@ function initApp() {
     onSpeakingChange: (isSpeaking) => {
       if (photoRenderer) photoRenderer.setSpeakingState(isSpeaking);
       if (meshRenderer) meshRenderer.setSpeakingState(isSpeaking);
+      if (videoAvatar && activeAvatarMode === "video") {
+        if (isSpeaking) {
+          videoAvatar.play().catch(() => {});
+        } else {
+          videoAvatar.pause();
+        }
+      }
       if (isSpeaking) {
         micBtn.classList.add("speaking");
         micLabel.textContent = "Speaking";
@@ -131,12 +139,18 @@ function initApp() {
       if (state.isSpeaking) {
         photoRenderer?.setSpeakingState(true);
         meshRenderer?.setSpeakingState(true);
+        if (videoAvatar && activeAvatarMode === "video") {
+          videoAvatar.play().catch(() => {});
+        }
         micBtn.classList.add("speaking");
         micLabel.textContent = "Speaking";
         statusDot.style.background = "#00d2d3";
       } else {
         photoRenderer?.setSpeakingState(false);
         meshRenderer?.setSpeakingState(false);
+        if (videoAvatar && activeAvatarMode === "video") {
+          videoAvatar.pause();
+        }
         micBtn.classList.remove("speaking");
         if (isConversationActive) {
           statusDot.style.background = "#2ed573";
@@ -232,30 +246,90 @@ function renderLoop() {
   }
 }
 
+function setAvatarMode(mode) {
+  activeAvatarMode = mode;
+  if (mode === "photo") {
+    photoCanvas.style.display = "block";
+    if (videoAvatar) {
+      videoAvatar.style.display = "none";
+      videoAvatar.pause();
+    }
+    webglCanvas.style.display = "none";
+    if (avatarModeVal) avatarModeVal.textContent = "🌟 Original Photo";
+    if (photoRenderer) photoRenderer.resize();
+  } else if (mode === "video") {
+    photoCanvas.style.display = "none";
+    if (videoAvatar) {
+      videoAvatar.style.display = "block";
+      videoAvatar.currentTime = 0;
+      videoAvatar.play().catch(e => console.log("Video playback waiting for user gesture:", e));
+    }
+    webglCanvas.style.display = "none";
+    if (avatarModeVal) avatarModeVal.textContent = "🎥 Video Avatar";
+    if (fpsVal) fpsVal.textContent = "60 FPS";
+  } else if (mode === "mesh") {
+    photoCanvas.style.display = "none";
+    if (videoAvatar) {
+      videoAvatar.style.display = "none";
+      videoAvatar.pause();
+    }
+    webglCanvas.style.display = "block";
+    if (avatarModeVal) avatarModeVal.textContent = "🤖 3D Mesh";
+    if (!meshRenderer) {
+      meshRenderer = new AvatarRenderer(webglCanvas, {
+        onFpsUpdate: (fps) => {
+          if (fpsVal && activeAvatarMode === "mesh") fpsVal.textContent = `${fps} FPS`;
+        }
+      });
+    } else {
+      meshRenderer.onWindowResize();
+    }
+  }
+}
+
+function playJessicaTargetAnimation() {
+  const quote = "Hello, I'm Jessica. I fell from the sky and I'm here to cause havoc.";
+  dialogueBubble.textContent = quote;
+  statusText.textContent = "TARGET ANIMATION // JESSICA HAVOC";
+  statusDot.style.background = "#f39c12";
+
+  // Switch to Video Avatar mode to showcase the ground truth target animation
+  setAvatarMode("video");
+  if (videoAvatar) {
+    videoAvatar.currentTime = 0;
+    videoAvatar.muted = false;
+    videoAvatar.play().then(() => {
+      micBtn.classList.add("speaking");
+      micLabel.textContent = "Speaking";
+      showDiagnostic("Playing authentic Jessica target animation video with synchronized audio!");
+    }).catch(err => {
+      console.warn("Audio autoplay blocked by browser policy, falling back to muted video + TTS:", err);
+      videoAvatar.muted = true;
+      videoAvatar.play().catch(() => {});
+      localAudioEngine.speak(quote);
+    });
+
+    videoAvatar.onended = () => {
+      micBtn.classList.remove("speaking");
+      micLabel.textContent = isConversationActive ? "Listening" : "Tap to Talk";
+      statusText.textContent = isConversationActive ? "LISTENING // SPEAK FREELY" : "ONLINE // READY";
+      statusDot.style.background = "#2ed573";
+    };
+  } else {
+    localAudioEngine.speak(quote);
+  }
+}
+
 function setupEvents() {
-  // Avatar Mode Toggle: 🌟 Original Photo (Default) <-> 🎮 3D Mesh
+  // Avatar Mode Toggle: 🌟 Original Photo <-> 🎥 Video Avatar <-> 🤖 3D Mesh
   if (avatarModeBtn) {
     avatarModeBtn.addEventListener("click", () => {
       if (activeAvatarMode === "photo") {
-        activeAvatarMode = "mesh";
-        photoCanvas.style.display = "none";
-        webglCanvas.style.display = "block";
-        if (avatarModeVal) avatarModeVal.textContent = "🎮 3D Mesh";
-        if (!meshRenderer) {
-          meshRenderer = new AvatarRenderer(webglCanvas, {
-            onFpsUpdate: (fps) => {
-              if (fpsVal && activeAvatarMode === "mesh") fpsVal.textContent = `${fps} FPS`;
-            }
-          });
-        } else {
-          meshRenderer.onWindowResize();
-        }
+        setAvatarMode("video");
+      } else if (activeAvatarMode === "video") {
+        setAvatarMode("mesh");
       } else {
-        activeAvatarMode = "photo";
-        photoCanvas.style.display = "block";
-        webglCanvas.style.display = "none";
-        if (avatarModeVal) avatarModeVal.textContent = "🌟 Original Photo";
-        if (photoRenderer) photoRenderer.resize();
+        setAvatarMode("photo");
       }
     });
   }
@@ -324,6 +398,11 @@ function setupEvents() {
       const prompt = chip.getAttribute("data-prompt");
       userTranscript.textContent = `"${prompt}"`;
 
+      if (prompt === "Hello Jessica") {
+        playJessicaTargetAnimation();
+        return;
+      }
+
       if (currentMode === "gemini-live" && geminiLive && geminiLive.isConnected) {
         geminiLive.sendTextMessage(prompt);
       } else {
@@ -387,6 +466,9 @@ function stopConversation() {
 
   if (photoRenderer) photoRenderer.setSpeakingState(false);
   if (meshRenderer) meshRenderer.setSpeakingState(false);
+  if (videoAvatar && activeAvatarMode === "video") {
+    videoAvatar.pause();
+  }
 
   statusText.textContent = "STANDBY // READY";
   statusDot.style.background = "#ffa502";

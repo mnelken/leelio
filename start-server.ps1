@@ -65,6 +65,7 @@ try {
                     ".gltf" { "model/gltf+json" }
                     ".json" { "application/json" }
                     ".wasm" { "application/wasm" }
+                    ".mp4"  { "video/mp4" }
                     ".apk"  { "application/vnd.android.package-archive" }
                     default { "application/octet-stream" }
                 }

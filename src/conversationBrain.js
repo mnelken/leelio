@@ -107,6 +107,11 @@ Keep your responses conversational, spoken, concise (1-2 sentences), and natural
       return "I'm Leelio! Not an operative, not a secret agent—just Leelio. Pleased to meet you!";
     }
 
+    if (text.includes("jessica") || text.includes("havoc") || text.includes("target") || text.includes("fell from") || text.includes("sky")) {
+      this.lastTopic = "jessica";
+      return "Hello, I'm Jessica. I fell from the sky and I'm here to cause havoc.";
+    }
+
     if (text.includes("avatar") || text.includes("look") || text.includes("photo") || text.includes("uniform") || text.includes("hair") || text.includes("clothes") || text.includes("dress") || text.includes("face")) {
       this.lastTopic = "appearance";
       const looks = [

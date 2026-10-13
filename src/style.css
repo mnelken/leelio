@@ -36,13 +36,15 @@ body, html {
   z-index: 1;
 }
 
-#photo-canvas, #webgl-canvas {
+#photo-canvas, #webgl-canvas, #video-avatar {
   width: 100%;
   height: 100%;
   display: block;
   position: absolute;
   top: 0;
   left: 0;
+  object-fit: cover;
+  object-position: center center;
 }
 
 /* UI Overlay Layer */

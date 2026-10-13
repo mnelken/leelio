@@ -142,6 +142,7 @@ public class LocalAssetServer {
         if (lower.endsWith(".gltf")) return "model/gltf+json";
         if (lower.endsWith(".json")) return "application/json";
         if (lower.endsWith(".wasm")) return "application/wasm";
+        if (lower.endsWith(".mp4")) return "video/mp4";
         return "application/octet-stream";
     }
 
