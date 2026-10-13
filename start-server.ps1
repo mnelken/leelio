@@ -73,6 +73,7 @@ try {
                 $bytes = [System.IO.File]::ReadAllBytes($filePath)
                 $res.ContentType = $contentType
                 $res.ContentLength64 = $bytes.Length
+                $res.Headers.Add("Accept-Ranges", "bytes")
                 if ($ext -eq ".apk") {
                     $res.Headers.Add("Content-Disposition", "attachment; filename=`"Leelio.apk`"")
                 }

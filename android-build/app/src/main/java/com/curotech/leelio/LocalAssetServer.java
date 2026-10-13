@@ -115,6 +115,7 @@ public class LocalAssetServer {
                 String headers = "HTTP/1.1 200 OK\r\n" +
                         "Content-Type: " + mimeType + "\r\n" +
                         "Content-Length: " + fileBytes.length + "\r\n" +
+                        "Accept-Ranges: bytes\r\n" +
                         "Access-Control-Allow-Origin: *\r\n" +
                         "Connection: close\r\n\r\n";
                 out.write(headers.getBytes("UTF-8"));

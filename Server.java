@@ -28,6 +28,7 @@ public class Server {
                     String mime = getMime(file.getName());
                     Headers headers = exchange.getResponseHeaders();
                     headers.add("Content-Type", mime);
+                    headers.add("Accept-Ranges", "bytes");
                     headers.add("Access-Control-Allow-Origin", "*");
                     headers.add("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
                     headers.add("Access-Control-Allow-Headers", "*");
