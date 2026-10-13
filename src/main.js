@@ -70,7 +70,7 @@ function initApp() {
       statusText.textContent = status;
       if (status.includes("LIVE")) {
         statusDot.style.background = "#2ed573";
-        protocolVal.textContent = "Gemini 3.8 Live";
+        if (protocolVal) protocolVal.textContent = "Gemini 3.8 Live";
       } else if (status.includes("CONNECTING")) {
         statusDot.style.background = "#ffa502";
       } else if (status.includes("ERROR")) {
@@ -154,7 +154,7 @@ function initApp() {
 
   // Initial greeting
   dialogueBubble.textContent = "Hey! I'm Leelio. Great to meet you! How's your day going?";
-  protocolVal.textContent = savedKey ? "Gemini 3.8 Live" : "Leelio Brain";
+  if (protocolVal) protocolVal.textContent = savedKey ? "Gemini 3.8 Live" : "Leelio Brain";
 }
 
 function showDiagnostic(msg) {
@@ -309,11 +309,11 @@ function setupEvents() {
       localStorage.setItem("GEMINI_API_KEY", key);
       localBrain.setApiKey(key);
       showDiagnostic("Gemini API Key saved. Gemini 3.8 Live protocol armed!");
-      protocolVal.textContent = "Gemini 3.8 Live";
+      if (protocolVal) protocolVal.textContent = "Gemini 3.8 Live";
     } else {
       localStorage.removeItem("GEMINI_API_KEY");
       showDiagnostic("Using local persona fallback mode.");
-      protocolVal.textContent = "Local Persona";
+      if (protocolVal) protocolVal.textContent = "Local Persona";
     }
     settingsPanel.classList.remove("open");
   });
@@ -363,7 +363,7 @@ async function startConversation() {
 }
 
 async function startLocalConversation() {
-  protocolVal.textContent = "Leelio Brain";
+  if (protocolVal) protocolVal.textContent = "Leelio Brain";
   statusText.textContent = "LISTENING // SPEAK FREELY";
   dialogueBubble.textContent = "Hey! I'm listening...";
   await localAudioEngine.startConversation();

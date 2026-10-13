@@ -1,4 +1,4 @@
-$bytes = [System.IO.File]::ReadAllBytes("g:\My Drive\curotech-antigravity\avatar-app\public\facecap.glb")
+$bytes = [System.IO.File]::ReadAllBytes("$PSScriptRoot\public\facecap.glb")
 $jsonLen = [System.BitConverter]::ToUInt32($bytes, 12)
 $jsonBytes = New-Object byte[] $jsonLen
 [System.Array]::Copy($bytes, 20, $jsonBytes, 0, $jsonLen)

@@ -16,7 +16,19 @@ $aapt2 = Join-Path $toolsDir "aapt2.exe"
 $androidJar = Join-Path $toolsDir "android.jar"
 $r8Jar = Join-Path $toolsDir "r8.jar"
 
-$jdkBin = "C:\Program Files\Eclipse Adoptium\jdk-25.0.4.101-hotspot\bin"
+# Dynamically locate Java JDK
+$jdkBin = $null
+if ($env:JAVA_HOME -and (Test-Path (Join-Path $env:JAVA_HOME "bin\javac.exe"))) {
+    $jdkBin = Join-Path $env:JAVA_HOME "bin"
+} elseif (Get-Command javac.exe -ErrorAction SilentlyContinue) {
+    $jdkBin = Split-Path (Get-Command javac.exe).Source -Parent
+} elseif (Test-Path "C:\Program Files\Eclipse Adoptium\jdk-25.0.4.101-hotspot\bin\javac.exe") {
+    $jdkBin = "C:\Program Files\Eclipse Adoptium\jdk-25.0.4.101-hotspot\bin"
+} else {
+    $found = Get-ChildItem "C:\Program Files\Eclipse Adoptium", "C:\Program Files\Java" -Filter "javac.exe" -Recurse -Depth 3 -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($found) { $jdkBin = $found.DirectoryName }
+    else { throw "Java JDK (javac.exe) not found. Please install JDK or set JAVA_HOME." }
+}
 $javac = Join-Path $jdkBin "javac.exe"
 $java = Join-Path $jdkBin "java.exe"
 $jar = Join-Path $jdkBin "jar.exe"
@@ -26,6 +38,7 @@ $jarsigner = Join-Path $jdkBin "jarsigner.exe"
 Write-Host "==========================================================" -ForegroundColor Cyan
 Write-Host "  Leelio Android APK Build Script" -ForegroundColor Yellow
 Write-Host "==========================================================" -ForegroundColor Cyan
+Write-Host "Using JDK: $jdkBin" -ForegroundColor Gray
 
 # 1. Prepare build directories
 $buildDir = Join-Path $androidBuildDir "build"
@@ -45,6 +58,11 @@ New-Item -ItemType Directory -Path $buildDir -Force | Out-Null
 New-Item -ItemType Directory -Path $genDir -Force | Out-Null
 New-Item -ItemType Directory -Path $classesDir -Force | Out-Null
 New-Item -ItemType Directory -Path $dexDir -Force | Out-Null
+
+# Always cleanly recreate the assets directory to prevent stale/duplicate file accumulation
+if (Test-Path $assetsDir) {
+    Remove-Item -Path $assetsDir -Recurse -Force
+}
 New-Item -ItemType Directory -Path $assetsDir -Force | Out-Null
 
 # 2. Copy Web App Assets into Android assets/
@@ -53,9 +71,9 @@ Write-Host "[1/7] Copying Web App & 3D Assets to assets/..." -ForegroundColor Cy
 # index.html
 Copy-Item -Path (Join-Path $rootDir "index.html") -Destination (Join-Path $assetsDir "index.html") -Force
 
-# public/ assets (Three.js, GLTFLoader, avatar.jpg, 3D models)
+# public/ assets (exclude any existing APK to prevent recursive bloating)
 $publicDir = Join-Path $rootDir "public"
-Get-ChildItem -Path $publicDir -File | ForEach-Object {
+Get-ChildItem -Path $publicDir -File | Where-Object { $_.Extension -ne ".apk" } | ForEach-Object {
     Copy-Item -Path $_.FullName -Destination (Join-Path $assetsDir $_.Name) -Force
 }
 
@@ -83,6 +101,7 @@ Add-Type -AssemblyName System.IO.Compression
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $zip = [System.IO.Compression.ZipFile]::Open($unalignedApk, [System.IO.Compression.ZipArchiveMode]::Update)
 $toAdd = @()
+$toDelete = @()
 foreach ($entry in $zip.Entries) {
     if ($entry.FullName.Contains("\")) {
         $forwardName = $entry.FullName.Replace("\", "/")
@@ -94,6 +113,7 @@ foreach ($entry in $zip.Entries) {
             $s.Close()
             $toAdd += @{ Name = $forwardName; Bytes = $ms.ToArray() }
         }
+        $toDelete += $entry
     }
 }
 foreach ($item in $toAdd) {
@@ -101,6 +121,9 @@ foreach ($item in $toAdd) {
     $es = $newEntry.Open()
     $es.Write($item.Bytes, 0, $item.Bytes.Length)
     $es.Close()
+}
+foreach ($delEntry in $toDelete) {
+    $delEntry.Delete()
 }
 $zip.Dispose()
 

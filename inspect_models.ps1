@@ -1,7 +1,7 @@
 $paths = @(
-    "g:\My Drive\curotech-antigravity\avatar-app\public\test_model.glb",
-    "g:\My Drive\curotech-antigravity\avatar-app\public\xbot.glb",
-    "g:\My Drive\curotech-antigravity\avatar-app\public\facecap.glb"
+    "$PSScriptRoot\public\test_model.glb",
+    "$PSScriptRoot\public\xbot.glb",
+    "$PSScriptRoot\public\facecap.glb"
 )
 
 foreach ($path in $paths) {
