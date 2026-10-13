@@ -66,6 +66,10 @@ export class PhotoAvatarRenderer {
     this.lastSyncVideoTime = -1;
     this.targetSync = targetSyncTrajectory;
 
+    // Skeleton Phase-Lock State (Facial Skeleton Rig Driver)
+    this.skeletonSource = null;
+    this.isSyncedToSkeleton = false;
+
     // Eyelid Blinking State
     this.blinkLeft = 0;
     this.nextBlinkTime = 2.0 + Math.random() * 2.0;
@@ -510,9 +514,32 @@ export class PhotoAvatarRenderer {
   syncWithVideo(videoElement) {
     this.videoSyncSource = videoElement;
     this.isSyncedToVideo = true;
+    this.isSyncedToSkeleton = false;
     this.lastSyncVideoTime = -1;
     this.setSpeakingState(true);
     console.log("[PhotoAvatarRenderer] Phase-locked to target video stream.");
+  }
+
+  /**
+   * Phase-lock the real-time neural avatar directly to a FacialSkeletonModel instance.
+   * @param {FacialSkeletonModel} skeletonModel
+   */
+  syncWithSkeleton(skeletonModel) {
+    this.skeletonSource = skeletonModel;
+    this.isSyncedToSkeleton = true;
+    this.isSyncedToVideo = false;
+    this.setSpeakingState(true);
+    console.log("[PhotoAvatarRenderer] Phase-locked to 52-parameter Facial Skeleton Model.");
+  }
+
+  /**
+   * Disconnect skeleton synchronization.
+   */
+  unsyncSkeleton() {
+    this.skeletonSource = null;
+    this.isSyncedToSkeleton = false;
+    this.setSpeakingState(false);
+    console.log("[PhotoAvatarRenderer] Disconnected skeleton phase-lock.");
   }
 
   /**
@@ -558,8 +585,21 @@ export class PhotoAvatarRenderer {
 
     if (!this.isReady || !this.material) return;
 
-    // 1. Process Video Phase-Lock OR Mimic OR Conversational Dynamics
-    if (this.isSyncedToVideo && this.videoSyncSource) {
+    // 1. Process Skeleton Model Phase-Lock OR Video Phase-Lock OR Mimic OR Conversational Dynamics
+    if (this.isSyncedToSkeleton && this.skeletonSource) {
+      const p = this.skeletonSource.parameters;
+      const pose = this.skeletonSource.pose;
+
+      this.jawTarget = p.jawOpen || 0.0;
+      this.spreadTarget = (p.mouthStretchLeft || 0.0) - (p.mouthPucker || 0.0);
+      this.smileTarget = Math.max(0.18, ((p.mouthSmileLeft || 0.0) + (p.mouthSmileRight || 0.0)) * 0.5);
+      this.cheekSquintTarget = Math.max(0.12, ((p.cheekSquintLeft || 0.0) + (p.cheekSquintRight || 0.0)) * 0.5);
+      this.browTarget = p.browInnerUp || 0.0;
+      this.headRollTarget = pose.headRoll || 0.0;
+      this.headPitchTarget = pose.headPitch || 0.0;
+      this.headYawTarget = pose.headYaw || 0.0;
+      this.blinkLeft = p.eyeBlinkLeft || 0.0;
+    } else if (this.isSyncedToVideo && this.videoSyncSource) {
       const videoTime = this.videoSyncSource.currentTime || 0;
       const pose = this.targetSync.evaluate(videoTime, true);
 
@@ -625,8 +665,8 @@ export class PhotoAvatarRenderer {
     }
 
     // 2. Snappy Physics Interpolation (Attack & Decay)
-    const lerpSpeed = this.isSyncedToVideo ? 38.0 : ((this.isSpeaking || this.isMimicActive) ? 24.0 : 12.0);
-    const rotSpeed = this.isSyncedToVideo ? 32.0 : 10.0;
+    const lerpSpeed = (this.isSyncedToVideo || this.isSyncedToSkeleton) ? 38.0 : ((this.isSpeaking || this.isMimicActive) ? 24.0 : 12.0);
+    const rotSpeed = (this.isSyncedToVideo || this.isSyncedToSkeleton) ? 32.0 : 10.0;
 
     this.jawCurrent += (this.jawTarget - this.jawCurrent) * lerpSpeed * delta;
     this.spreadCurrent += (this.spreadTarget - this.spreadCurrent) * lerpSpeed * delta;

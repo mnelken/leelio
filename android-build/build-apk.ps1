@@ -84,6 +84,14 @@ if (Test-Path $assetsSrcDir) {
 }
 Copy-Item -Path (Join-Path $rootDir "src") -Destination $assetsSrcDir -Recurse -Force
 
+# tools/ directory (comparison & sync diagnostic players)
+$toolsDir = Join-Path $rootDir "tools"
+if (Test-Path $toolsDir) {
+    $assetsToolsDir = Join-Path $assetsDir "tools"
+    if (Test-Path $assetsToolsDir) { Remove-Item -Path $assetsToolsDir -Recurse -Force }
+    Copy-Item -Path $toolsDir -Destination $assetsToolsDir -Recurse -Force
+}
+
 Write-Host "      Assets packaged into Android assets directory." -ForegroundColor Green
 
 # 3. AAPT2 Compile Resources

@@ -2,16 +2,22 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Leelio Neural Avatar • Live Kinematic Sync Player</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Leelio Neural Avatar • 3D Facial Skeleton & Kinematic Rig Player</title>
   <script src="/three.min.js"></script>
   <style>
     :root {
-      --bg-dark: #0a0e17;
-      --card-bg: #111827;
-      --border-color: #1f293d;
-      --accent-green: #2ed573;
-      --accent-orange: #f39c12;
-      --accent-cyan: #00d2d3;
+      --bg-dark: #080c14;
+      --card-bg: #0f172a;
+      --border-color: #1e293b;
+      --accent-green: #10b981;
+      --accent-orange: #f59e0b;
+      --accent-cyan: #06b6d4;
+      --accent-purple: #8b5cf6;
+      --accent-pink: #ec4899;
+    }
+    * {
+      box-sizing: border-box;
     }
     body {
       margin: 0;
@@ -23,29 +29,29 @@
       flex-direction: column;
       align-items: center;
       min-height: 100vh;
-      box-sizing: border-box;
     }
     header {
       text-align: center;
       margin-bottom: 12px;
     }
     h1 {
-      margin: 0 0 4px 0;
-      font-size: 1.5rem;
-      background: linear-gradient(135deg, #2ed573 0%, #00d2d3 100%);
+      margin: 0 0 6px 0;
+      font-size: 1.55rem;
+      background: linear-gradient(135deg, #10b981 0%, #06b6d4 50%, #8b5cf6 100%);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
+      letter-spacing: -0.02em;
     }
     .status-bar {
       display: inline-flex;
       align-items: center;
       gap: 8px;
-      font-size: 13px;
+      font-size: 12px;
       color: #94a3b8;
       background: rgba(255,255,255,0.05);
       padding: 4px 14px;
       border-radius: 20px;
-      border: 1px solid rgba(255,255,255,0.1);
+      border: 1px solid rgba(255,255,255,0.08);
     }
     .dot {
       width: 8px;
@@ -59,79 +65,150 @@
       0%, 100% { opacity: 1; transform: scale(1); }
       50% { opacity: 0.6; transform: scale(0.9); }
     }
+
+    /* Comparison 3-Panel Layout */
     .comparison-container {
-      display: flex;
-      gap: 16px;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
       background: var(--card-bg);
-      padding: 16px;
+      padding: 14px;
       border-radius: 16px;
       border: 1px solid var(--border-color);
-      box-shadow: 0 20px 40px rgba(0,0,0,0.6);
-      max-width: 1100px;
+      box-shadow: 0 20px 45px rgba(0,0,0,0.65);
+      max-width: 1440px;
       width: 100%;
-      justify-content: center;
-      box-sizing: border-box;
     }
     .panel {
-      flex: 1;
       display: flex;
       flex-direction: column;
-      align-items: center;
       position: relative;
-      max-width: 512px;
+      background: #090e1a;
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .panel.hidden {
+      display: none;
     }
     .badge {
       position: absolute;
       top: 10px;
       left: 10px;
       z-index: 10;
-      padding: 6px 14px;
-      border-radius: 20px;
-      font-size: 11px;
+      padding: 5px 12px;
+      border-radius: 16px;
+      font-size: 10.5px;
       font-weight: 700;
       letter-spacing: 0.5px;
-      background: rgba(10, 14, 23, 0.75);
+      background: rgba(9, 14, 26, 0.85);
       backdrop-filter: blur(8px);
       border: 1px solid rgba(255,255,255,0.15);
+      display: flex;
+      align-items: center;
+      gap: 6px;
     }
-    .badge.left { border-color: var(--accent-green); color: var(--accent-green); }
-    .badge.right { border-color: var(--accent-orange); color: var(--accent-orange); }
+    .badge.video { border-color: var(--accent-orange); color: var(--accent-orange); }
+    .badge.skeleton { border-color: var(--accent-cyan); color: var(--accent-cyan); }
+    .badge.avatar { border-color: var(--accent-green); color: var(--accent-green); }
+
+    .hint-drag {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      z-index: 10;
+      font-size: 10px;
+      color: #64748b;
+      background: rgba(0,0,0,0.6);
+      padding: 3px 8px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.08);
+      pointer-events: none;
+    }
+
     canvas, video {
       width: 100%;
-      height: 480px;
+      height: 420px;
       object-fit: cover;
-      border-radius: 10px;
-      background: #000;
-      border: 1px solid rgba(255,255,255,0.06);
+      display: block;
+      background: #040711;
     }
+
+    /* HUD Metrics & Parameter Meter Bars */
     .hud-metrics {
-      margin-top: 8px;
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-      font-size: 12px;
+      font-size: 11px;
       color: #94a3b8;
-      width: 100%;
+      background: #090e1a;
+      padding: 8px 12px;
+      border-top: 1px solid rgba(255,255,255,0.06);
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .metrics-row {
       display: flex;
       justify-content: space-between;
-      background: rgba(0,0,0,0.3);
-      padding: 6px 10px;
-      border-radius: 6px;
-      box-sizing: border-box;
+      align-items: center;
     }
     .hud-metrics b { color: #f8fafc; }
-    
-    /* Interactive Controller */
+
+    /* Live Parameter Rig Gauges */
+    .param-gauges {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4px 10px;
+      margin-top: 4px;
+      padding-top: 4px;
+      border-top: 1px dashed rgba(255,255,255,0.08);
+      font-size: 10.5px;
+    }
+    .param-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+    }
+    .param-label {
+      color: #64748b;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 95px;
+    }
+    .param-bar-bg {
+      flex: 1;
+      height: 4px;
+      background: rgba(255,255,255,0.08);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+    .param-bar-fill {
+      height: 100%;
+      background: var(--accent-cyan);
+      width: 0%;
+      border-radius: 2px;
+      transition: width 0.05s linear;
+    }
+    .param-val {
+      font-family: monospace;
+      color: #cbd5e1;
+      min-width: 26px;
+      text-align: right;
+    }
+
+    /* Controller Panel */
     .controls-wrapper {
-      margin-top: 14px;
+      margin-top: 12px;
       width: 100%;
-      max-width: 1100px;
+      max-width: 1440px;
       background: var(--card-bg);
       border: 1px solid var(--border-color);
       border-radius: 12px;
-      padding: 14px 20px;
-      box-sizing: border-box;
+      padding: 12px 18px;
       display: flex;
       flex-direction: column;
-      gap: 12px;
+      gap: 10px;
     }
     .scrubber-row {
       display: flex;
@@ -172,20 +249,20 @@
       align-items: center;
       justify-content: space-between;
       flex-wrap: wrap;
-      gap: 10px;
+      gap: 8px;
     }
     .btn-group {
       display: flex;
-      gap: 8px;
+      gap: 6px;
       align-items: center;
     }
     button {
       background: #1e293b;
       color: #fff;
       border: 1px solid #334155;
-      padding: 8px 16px;
+      padding: 7px 14px;
       border-radius: 8px;
-      font-size: 13px;
+      font-size: 12.5px;
       font-weight: 600;
       cursor: pointer;
       transition: all 0.2s;
@@ -208,56 +285,117 @@
       background: #d97706;
       border-color: #f59e0b;
     }
-    .chips {
-      display: flex;
-      gap: 6px;
-      align-items: center;
-    }
     .chip {
       font-size: 11px;
-      padding: 5px 10px;
+      padding: 4px 10px;
       border-radius: 14px;
       background: rgba(255,255,255,0.06);
       border: 1px solid rgba(255,255,255,0.12);
       color: #cbd5e1;
     }
-    .chip:hover {
-      background: rgba(46, 213, 115, 0.15);
-      border-color: var(--accent-green);
+    .chip:hover, .chip.active {
+      background: rgba(6, 182, 212, 0.15);
+      border-color: var(--accent-cyan);
       color: #fff;
+    }
+
+    @media (max-width: 1024px) {
+      .comparison-container {
+        grid-template-columns: 1fr;
+      }
+      canvas, video {
+        height: 380px;
+      }
     }
   </style>
 </head>
 <body>
   <header>
-    <h1>Leelio Neural Avatar • Kinematic Video Synchronization</h1>
+    <h1>Leelio Neural Avatar • 3D Facial Skeleton & Kinematic Rig</h1>
     <div class="status-bar">
       <span class="dot" id="status-dot"></span>
-      <span id="status-text">PHASE-LOCKED // 60 FPS REAL-TIME</span>
+      <span id="status-text">52-PARAMETER ARKIT / FACS RIG PHASE-LOCKED // 60 FPS</span>
     </div>
   </header>
 
-  <div class="comparison-container">
-    <!-- Left: Real-Time GLSL Neural Mimic -->
-    <div class="panel">
-      <div class="badge left">🌟 REAL-TIME NEURAL MIMIC (GLSL)</div>
-      <canvas id="photo-canvas" width="512" height="480"></canvas>
-      <div class="hud-metrics" id="photo-metrics">
-        <span>Roll: <b id="m-roll">0.0°</b></span>
-        <span>Smile: <b id="m-smile">0.00</b></span>
-        <span>Jaw: <b id="m-jaw">0.00</b></span>
-        <span>Brow: <b id="m-brow">0.00</b></span>
+  <div class="comparison-container" id="grid-container">
+    <!-- Panel 1: Target Stream (Ground Truth) -->
+    <div class="panel" id="panel-video">
+      <div class="badge video">🎯 TARGET STREAM (GROUND TRUTH)</div>
+      <video id="target-video" src="/avatar_video.mp4" playsinline muted autoplay loop preload="auto"></video>
+      <div class="hud-metrics">
+        <div class="metrics-row">
+          <span>Source: <b>HeyGen Jessica (4.46s)</b></span>
+          <span>Status: <b id="m-status" style="color: #10b981;">PLAYING</b></span>
+        </div>
+        <div class="metrics-row">
+          <span>FPS: <b>30 Ground Truth</b></span>
+          <span>Time: <b id="m-time">0.00s</b></span>
+        </div>
       </div>
     </div>
 
-    <!-- Right: Target Ground Truth Stream -->
-    <div class="panel">
-      <div class="badge right">🎯 TARGET STREAM (HEYGEN)</div>
-      <video id="target-video" src="/avatar_video.mp4" playsinline muted autoplay loop preload="auto"></video>
-      <div class="hud-metrics" id="video-metrics">
-        <span>Time: <b id="m-time">0.00s</b></span>
-        <span>FPS: <b>30 Ground Truth</b></span>
-        <span>Status: <b id="m-status" style="color: #2ed573;">PLAYING</b></span>
+    <!-- Panel 2: 3D Facial Skeleton Model (52 FACS / ARKit Parameters) -->
+    <div class="panel" id="panel-skeleton">
+      <div class="badge skeleton">💀 3D FACIAL SKELETON (52 FACS)</div>
+      <div class="hint-drag">🖱 Drag to Orbit 3D</div>
+      <canvas id="skeleton-canvas" width="460" height="420"></canvas>
+      <div class="hud-metrics">
+        <div class="metrics-row">
+          <span>Pose: Roll <b id="s-roll">0.0°</b> Pitch <b id="s-pitch">0.0°</b></span>
+          <span>Yaw: <b id="s-yaw">0.0°</b></span>
+          <span>Rig: <b>52 ARKit / 72 Pts</b></span>
+        </div>
+        <div class="param-gauges">
+          <div class="param-item">
+            <span class="param-label">jawOpen</span>
+            <div class="param-bar-bg"><div class="param-bar-fill" id="bar-jawOpen"></div></div>
+            <span class="param-val" id="val-jawOpen">0.00</span>
+          </div>
+          <div class="param-item">
+            <span class="param-label">mouthSmile</span>
+            <div class="param-bar-bg"><div class="param-bar-fill" id="bar-mouthSmile"></div></div>
+            <span class="param-val" id="val-mouthSmile">0.00</span>
+          </div>
+          <div class="param-item">
+            <span class="param-label">browInnerUp</span>
+            <div class="param-bar-bg"><div class="param-bar-fill" id="bar-browInnerUp"></div></div>
+            <span class="param-val" id="val-browInnerUp">0.00</span>
+          </div>
+          <div class="param-item">
+            <span class="param-label">cheekSquint</span>
+            <div class="param-bar-bg"><div class="param-bar-fill" id="bar-cheekSquint"></div></div>
+            <span class="param-val" id="val-cheekSquint">0.00</span>
+          </div>
+          <div class="param-item">
+            <span class="param-label">eyeBlink</span>
+            <div class="param-bar-bg"><div class="param-bar-fill" id="bar-eyeBlink"></div></div>
+            <span class="param-val" id="val-eyeBlink">0.00</span>
+          </div>
+          <div class="param-item">
+            <span class="param-label">mouthPucker</span>
+            <div class="param-bar-bg"><div class="param-bar-fill" id="bar-mouthPucker"></div></div>
+            <span class="param-val" id="val-mouthPucker">0.00</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Panel 3: Neural Photo Avatar (Slaved to Facial Skeleton Rig) -->
+    <div class="panel" id="panel-avatar">
+      <div class="badge avatar">🌟 NEURAL AVATAR (SLAVED TO RIG)</div>
+      <canvas id="photo-canvas" width="460" height="420"></canvas>
+      <div class="hud-metrics">
+        <div class="metrics-row">
+          <span>Engine: <b>2.5D GLSL Neural</b></span>
+          <span>FPS: <b id="a-fps" style="color: #10b981;">60</b></span>
+        </div>
+        <div class="metrics-row">
+          <span>Smile: <b id="a-smile">0.20</b></span>
+          <span>Jaw: <b id="a-jaw">0.00</b></span>
+          <span>Roll: <b id="a-roll">0.0°</b></span>
+          <span>Driver: <b style="color: #06b6d4;">Skeleton Rig</b></span>
+        </div>
       </div>
     </div>
   </div>
@@ -265,57 +403,102 @@
   <!-- Interactive Controls -->
   <div class="controls-wrapper">
     <div class="scrubber-row">
-      <button id="play-btn" class="primary" title="Play / Pause">⏸ Pause</button>
-      <button id="mute-btn" title="Toggle Audio (Muted by default for autoplay)">🔊 Audio: Muted</button>
+      <button id="play-btn" class="primary">⏸ Pause</button>
+      <button id="mute-btn">🔊 Audio: Muted</button>
       <input type="range" id="timeline" class="scrubber" min="0" max="4.46" step="0.01" value="0">
       <div class="time-code" id="time-display">0.00s / 4.46s</div>
     </div>
 
     <div class="buttons-row">
+      <!-- Layout Mode Toggles -->
       <div class="btn-group">
-        <span style="font-size: 12px; color: #64748b; font-weight: bold;">SPEED:</span>
-        <button class="chip" data-speed="0.5">0.5x</button>
-        <button class="chip" data-speed="0.75">0.75x</button>
-        <button class="chip" data-speed="1.0" style="border-color: #38bdf8; color: #38bdf8;">1.0x (Normal)</button>
+        <span style="font-size: 11px; color: #64748b; font-weight: bold;">LAYOUT:</span>
+        <button class="chip active" id="layout-all">3-Way Master</button>
+        <button class="chip" id="layout-skeleton-video">Skeleton + Video</button>
+        <button class="chip" id="layout-skeleton-avatar">Skeleton + Avatar</button>
       </div>
 
-      <div class="chips">
-        <span style="font-size: 12px; color: #64748b; font-weight: bold;">KEY FRAMES:</span>
-        <button class="chip" data-seek="0.5">0.5s ("Hello")</button>
+      <!-- Playback Speed -->
+      <div class="btn-group">
+        <span style="font-size: 11px; color: #64748b; font-weight: bold;">SPEED:</span>
+        <button class="chip" data-speed="0.5">0.5x</button>
+        <button class="chip" data-speed="0.75">0.75x</button>
+        <button class="chip active" data-speed="1.0">1.0x</button>
+      </div>
+
+      <!-- Keyframe Milestones -->
+      <div class="btn-group">
+        <span style="font-size: 11px; color: #64748b; font-weight: bold;">KEY FRAMES:</span>
+        <button class="chip" data-seek="0.50">0.50s ("Hello")</button>
         <button class="chip" data-seek="1.25">1.25s ("Jessica - Tilt & Smile")</button>
-        <button class="chip" data-seek="2.4">2.4s ("Sky")</button>
-        <button class="chip" data-seek="3.8">3.8s ("Havoc")</button>
+        <button class="chip" data-seek="2.40">2.40s ("Sky")</button>
+        <button class="chip" data-seek="3.80">3.80s ("Havoc")</button>
       </div>
     </div>
   </div>
 
   <script type="module">
     import { PhotoAvatarRenderer } from "/src/photoAvatarRenderer.js";
+    import { FacialSkeletonModel } from "/src/facialSkeletonModel.js";
+    import { FacialSkeletonRenderer } from "/src/facialSkeletonRenderer.js";
+    import { targetSyncTrajectory } from "/src/targetSyncTrajectory.js";
 
-    const canvas = document.getElementById("photo-canvas");
     const video = document.getElementById("target-video");
+    const photoCanvas = document.getElementById("photo-canvas");
+    const skeletonCanvas = document.getElementById("skeleton-canvas");
+
+    // UI Elements
     const playBtn = document.getElementById("play-btn");
     const muteBtn = document.getElementById("mute-btn");
     const timeline = document.getElementById("timeline");
     const timeDisplay = document.getElementById("time-display");
-    const statusText = document.getElementById("status-text");
     const mStatus = document.getElementById("m-status");
-
-    const mRoll = document.getElementById("m-roll");
-    const mSmile = document.getElementById("m-smile");
-    const mJaw = document.getElementById("m-jaw");
-    const mBrow = document.getElementById("m-brow");
     const mTime = document.getElementById("m-time");
 
-    // Initialize photo avatar and slave to video element
-    const renderer = new PhotoAvatarRenderer(canvas);
-    renderer.syncWithVideo(video);
+    // Skeleton Telemetry Elements
+    const sRoll = document.getElementById("s-roll");
+    const sPitch = document.getElementById("s-pitch");
+    const sYaw = document.getElementById("s-yaw");
+    const barJawOpen = document.getElementById("bar-jawOpen");
+    const valJawOpen = document.getElementById("val-jawOpen");
+    const barMouthSmile = document.getElementById("bar-mouthSmile");
+    const valMouthSmile = document.getElementById("val-mouthSmile");
+    const barBrowInnerUp = document.getElementById("bar-browInnerUp");
+    const valBrowInnerUp = document.getElementById("val-browInnerUp");
+    const barCheekSquint = document.getElementById("bar-cheekSquint");
+    const valCheekSquint = document.getElementById("val-cheekSquint");
+    const barEyeBlink = document.getElementById("bar-eyeBlink");
+    const valEyeBlink = document.getElementById("val-eyeBlink");
+    const barMouthPucker = document.getElementById("bar-mouthPucker");
+    const valMouthPucker = document.getElementById("val-mouthPucker");
+
+    // Avatar Telemetry Elements
+    const aFps = document.getElementById("a-fps");
+    const aSmile = document.getElementById("a-smile");
+    const aJaw = document.getElementById("a-jaw");
+    const aRoll = document.getElementById("a-roll");
+
+    // 1. Instantiate Canonical 52-Parameter Facial Skeleton Model
+    const skeletonModel = new FacialSkeletonModel();
+
+    // 2. Instantiate 3D Facial Skeleton Renderer
+    const skeletonRenderer = new FacialSkeletonRenderer(skeletonCanvas, skeletonModel);
+
+    // 3. Instantiate Neural Photo Avatar Renderer
+    const photoRenderer = new PhotoAvatarRenderer(photoCanvas, {
+      onFpsUpdate: (fps) => {
+        aFps.textContent = fps;
+      }
+    });
+
+    // 4. Slave Neural Avatar directly to the 52-Parameter Facial Skeleton Model!
+    photoRenderer.syncWithSkeleton(skeletonModel);
 
     let isScrubbing = false;
 
     // Start video playback
     video.play().catch(e => {
-      console.log("Autoplay notice (click anywhere to play with audio):", e);
+      console.log("Autoplay notice (interact to unblock audio):", e);
     });
 
     // Scrubber interaction
@@ -323,7 +506,6 @@
       isScrubbing = true;
       video.currentTime = parseFloat(e.target.value);
     });
-
     timeline.addEventListener("change", () => {
       isScrubbing = false;
     });
@@ -335,13 +517,13 @@
         playBtn.textContent = "⏸ Pause";
         playBtn.classList.add("primary");
         mStatus.textContent = "PLAYING";
-        mStatus.style.color = "#2ed573";
+        mStatus.style.color = "#10b981";
       } else {
         video.pause();
         playBtn.textContent = "▶ Play";
         playBtn.classList.remove("primary");
         mStatus.textContent = "PAUSED";
-        mStatus.style.color = "#f39c12";
+        mStatus.style.color = "#f59e0b";
       }
     });
 
@@ -360,14 +542,10 @@
     // Speed selector
     document.querySelectorAll("[data-speed]").forEach(btn => {
       btn.addEventListener("click", () => {
-        document.querySelectorAll("[data-speed]").forEach(b => {
-          b.style.borderColor = "rgba(255,255,255,0.12)";
-          b.style.color = "#cbd5e1";
-        });
+        document.querySelectorAll("[data-speed]").forEach(b => b.classList.remove("active"));
         const speed = parseFloat(btn.dataset.speed);
         video.playbackRate = speed;
-        btn.style.borderColor = "#38bdf8";
-        btn.style.color = "#38bdf8";
+        btn.classList.add("active");
       });
     });
 
@@ -380,9 +558,52 @@
       });
     });
 
-    // 60 FPS HUD Telemetry Sync Loop
-    function updateTelemetry() {
-      requestAnimationFrame(updateTelemetry);
+    // Layout Switchers
+    const gridContainer = document.getElementById("grid-container");
+    const panelVideo = document.getElementById("panel-video");
+    const panelSkeleton = document.getElementById("panel-skeleton");
+    const panelAvatar = document.getElementById("panel-avatar");
+    const layoutBtns = [
+      document.getElementById("layout-all"),
+      document.getElementById("layout-skeleton-video"),
+      document.getElementById("layout-skeleton-avatar")
+    ];
+
+    function setLayoutActive(activeBtn) {
+      layoutBtns.forEach(b => b.classList.remove("active"));
+      activeBtn.classList.add("active");
+    }
+
+    document.getElementById("layout-all").addEventListener("click", (e) => {
+      setLayoutActive(e.target);
+      panelVideo.classList.remove("hidden");
+      panelSkeleton.classList.remove("hidden");
+      panelAvatar.classList.remove("hidden");
+      gridContainer.style.gridTemplateColumns = "repeat(3, minmax(0, 1fr))";
+      skeletonRenderer.handleResize();
+    });
+
+    document.getElementById("layout-skeleton-video").addEventListener("click", (e) => {
+      setLayoutActive(e.target);
+      panelVideo.classList.remove("hidden");
+      panelSkeleton.classList.remove("hidden");
+      panelAvatar.classList.add("hidden");
+      gridContainer.style.gridTemplateColumns = "repeat(2, minmax(0, 1fr))";
+      skeletonRenderer.handleResize();
+    });
+
+    document.getElementById("layout-skeleton-avatar").addEventListener("click", (e) => {
+      setLayoutActive(e.target);
+      panelVideo.classList.add("hidden");
+      panelSkeleton.classList.remove("hidden");
+      panelAvatar.classList.remove("hidden");
+      gridContainer.style.gridTemplateColumns = "repeat(2, minmax(0, 1fr))";
+      skeletonRenderer.handleResize();
+    });
+
+    // Synchronous Master 60 FPS Animation & Telemetry Loop
+    function masterLoop() {
+      requestAnimationFrame(masterLoop);
 
       const t = video.currentTime || 0;
       const dur = video.duration || 4.46;
@@ -393,18 +614,47 @@
       timeDisplay.textContent = `${t.toFixed(2)}s / ${dur.toFixed(2)}s`;
       mTime.textContent = `${t.toFixed(2)}s`;
 
-      const rollDeg = (renderer.headRollCurrent * 180 / Math.PI).toFixed(1);
-      const smile = renderer.smileCurrent.toFixed(2);
-      const jaw = renderer.jawCurrent.toFixed(2);
-      const brow = renderer.browCurrent.toFixed(2);
+      // 1. Update 52-Parameter Facial Skeleton Model from Video Trajectory
+      skeletonModel.updateFromTrajectory(targetSyncTrajectory, t);
 
-      mRoll.textContent = `${rollDeg}°`;
-      mSmile.textContent = smile;
-      mJaw.textContent = jaw;
-      mBrow.textContent = brow;
+      // 2. Render 3D Facial Skeleton Model
+      skeletonRenderer.render();
+
+      // 3. Update Skeleton Telemetry & Parameter Gauges
+      const p = skeletonModel.parameters;
+      const pose = skeletonModel.pose;
+
+      sRoll.textContent = `${(pose.headRoll * 180 / Math.PI).toFixed(1)}°`;
+      sPitch.textContent = `${(pose.headPitch * 180 / Math.PI).toFixed(1)}°`;
+      sYaw.textContent = `${(pose.headYaw * 180 / Math.PI).toFixed(1)}°`;
+
+      barJawOpen.style.width = `${(p.jawOpen * 100).toFixed(0)}%`;
+      valJawOpen.textContent = p.jawOpen.toFixed(2);
+
+      const smileAvg = (p.mouthSmileLeft + p.mouthSmileRight) * 0.5;
+      barMouthSmile.style.width = `${(smileAvg * 100).toFixed(0)}%`;
+      valMouthSmile.textContent = smileAvg.toFixed(2);
+
+      barBrowInnerUp.style.width = `${(p.browInnerUp * 100).toFixed(0)}%`;
+      valBrowInnerUp.textContent = p.browInnerUp.toFixed(2);
+
+      const squintAvg = (p.cheekSquintLeft + p.cheekSquintRight) * 0.5;
+      barCheekSquint.style.width = `${(squintAvg * 100).toFixed(0)}%`;
+      valCheekSquint.textContent = squintAvg.toFixed(2);
+
+      barEyeBlink.style.width = `${(p.eyeBlinkLeft * 100).toFixed(0)}%`;
+      valEyeBlink.textContent = p.eyeBlinkLeft.toFixed(2);
+
+      barMouthPucker.style.width = `${(p.mouthPucker * 100).toFixed(0)}%`;
+      valMouthPucker.textContent = p.mouthPucker.toFixed(2);
+
+      // 4. Update Avatar Telemetry
+      aSmile.textContent = photoRenderer.smileCurrent.toFixed(2);
+      aJaw.textContent = photoRenderer.jawCurrent.toFixed(2);
+      aRoll.textContent = `${(photoRenderer.headRollCurrent * 180 / Math.PI).toFixed(1)}°`;
     }
 
-    requestAnimationFrame(updateTelemetry);
+    requestAnimationFrame(masterLoop);
   </script>
 </body>
 </html>
