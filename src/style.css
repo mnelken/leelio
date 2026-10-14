@@ -496,6 +496,20 @@ body, html {
   display: none !important;
 }
 
+#canvas-container.split-mode.split-3d #webgl-canvas {
+  width: 50% !important;
+  height: 100% !important;
+  left: 0 !important;
+  top: 0 !important;
+  display: block !important;
+  border-right: 2px solid rgba(0, 242, 254, 0.4);
+  box-shadow: 4px 0 25px rgba(0, 0, 0, 0.5);
+}
+
+#canvas-container.split-mode.split-3d #photo-canvas {
+  display: none !important;
+}
+
 /* Comparison Badges */
 .split-badge {
   position: absolute;
@@ -532,6 +546,15 @@ body, html {
 /* Portrait / Mobile Split Layout: Top vs Bottom */
 @media (max-width: 767px) {
   #canvas-container.split-mode #photo-canvas {
+    width: 100% !important;
+    height: 50% !important;
+    left: 0 !important;
+    top: 0 !important;
+    border-right: none;
+    border-bottom: 2px solid rgba(0, 242, 254, 0.4);
+  }
+
+  #canvas-container.split-mode.split-3d #webgl-canvas {
     width: 100% !important;
     height: 50% !important;
     left: 0 !important;

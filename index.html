@@ -11,13 +11,13 @@
   <script src="GLTFLoader.js"></script>
 </head>
 <body>
-  <!-- Avatar Canvas & Video Layer (Photo 2.5D, Video Avatar & 3D WebGL) -->
+  <!-- Avatar Canvas & Video Layer (3D Auto-Rigged WebGL, Photo 2.5D & Target Video) -->
   <div id="canvas-container">
-    <canvas id="photo-canvas"></canvas>
+    <canvas id="webgl-canvas"></canvas>
+    <canvas id="photo-canvas" style="display: none;"></canvas>
     <video id="video-avatar" src="avatar_video.mp4" playsinline preload="auto" loop style="display: none;"></video>
-    <canvas id="webgl-canvas" style="display: none;"></canvas>
-    <div id="split-badge-left" class="split-badge split-badge-left" style="display: none;">🌟 Real-Time Neural Mimic</div>
-    <div id="split-badge-right" class="split-badge split-badge-right" style="display: none;">🎯 Target Stream (HeyGen)</div>
+    <div id="split-badge-left" class="split-badge split-badge-left" style="display: none;">🤖 3D Auto-Rig</div>
+    <div id="split-badge-right" class="split-badge split-badge-right" style="display: none;">🎯 Target Stream (Video)</div>
   </div>
 
   <!-- Interactive HUD Layer -->
@@ -37,7 +37,7 @@
 
       <div class="hud-stats">
         <button class="hud-badge avatar-btn" id="avatar-mode-btn" title="Click to switch avatar model" style="cursor: pointer; background: rgba(243, 156, 18, 0.15); border: 1px solid var(--accent-orange); color: white;">
-          AVATAR: <span class="val" id="avatar-mode-val" style="color: var(--accent-orange); font-weight: bold;">🌟 Original Photo</span>
+          AVATAR: <span class="val" id="avatar-mode-val" style="color: var(--accent-orange); font-weight: bold;">🤖 3D Auto-Rig</span>
         </button>
         <div class="hud-badge">AI: <span class="val" id="protocol-val" style="color: #3498db; font-weight: bold;">Leelio Brain</span></div>
         <div class="hud-badge">GPU: <span class="val" id="fps-val">60 FPS</span></div>

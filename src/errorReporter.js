@@ -8,6 +8,23 @@
   window.__leelioErrorReporterInitialized = true;
 
   const ENDPOINT = '/api/client-error';
+
+  window.report = function(type, msg) {
+    try {
+      const payload = {
+        type: type,
+        page: window.location.pathname,
+        message: typeof msg === 'string' ? msg : JSON.stringify(msg),
+        time: new Date().toISOString()
+      };
+      const body = JSON.stringify(payload);
+      if (navigator.sendBeacon) {
+        navigator.sendBeacon(ENDPOINT, new Blob([body], { type: 'application/json' }));
+      } else {
+        fetch(ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body }).catch(() => {});
+      }
+    } catch (_) {}
+  };
   const sentCache = new Map(); // messageKey -> timestamp
   const THROTTLE_MS = 2500;
   let totalErrorsSent = 0;

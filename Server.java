@@ -102,6 +102,38 @@ public class Server {
                     return;
                 }
 
+                if ("POST".equalsIgnoreCase(exchange.getRequestMethod()) && (path.equals("api/save-image") || path.equals("api/save-image/"))) {
+                    String query = exchange.getRequestURI().getQuery();
+                    String filename = "preview.png";
+                    if (query != null && query.contains("name=")) {
+                        filename = query.substring(query.indexOf("name=") + 5);
+                        if (filename.contains("&")) filename = filename.substring(0, filename.indexOf("&"));
+                    }
+                    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                    try (InputStream is = exchange.getRequestBody()) {
+                        byte[] buf = new byte[8192];
+                        int r;
+                        while ((r = is.read(buf)) != -1) baos.write(buf, 0, r);
+                    }
+                    String bodyStr = new String(baos.toByteArray(), java.nio.charset.StandardCharsets.UTF_8);
+                    byte[] imgBytes;
+                    if (bodyStr.startsWith("data:image")) {
+                        String b64 = bodyStr.substring(bodyStr.indexOf(",") + 1);
+                        imgBytes = java.util.Base64.getDecoder().decode(b64);
+                    } else {
+                        imgBytes = baos.toByteArray();
+                    }
+                    File outFile = new File(rootDir, "tools/" + filename);
+                    Files.write(outFile.toPath(), imgBytes);
+                    byte[] ok = ("{\"status\":\"ok\",\"bytes\":" + imgBytes.length + "}").getBytes();
+                    exchange.getResponseHeaders().add("Content-Type", "application/json");
+                    exchange.getResponseHeaders().add("Access-Control-Allow-Origin", "*");
+                    exchange.sendResponseHeaders(200, ok.length);
+                    try (OutputStream os = exchange.getResponseBody()) { os.write(ok); }
+                    System.out.println(">>> Image saved: " + imgBytes.length + " bytes to tools/" + filename);
+                    return;
+                }
+
                 // Favicon clean handling
                 if (path.equals("favicon.ico")) {
                     File favFile = new File(rootDir, "favicon.ico");

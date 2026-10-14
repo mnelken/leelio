@@ -48,7 +48,7 @@ const sendTextBtn = document.getElementById("send-text-btn");
 // App State
 let photoRenderer = null;
 let meshRenderer = null;
-let activeAvatarMode = "photo"; // "photo" (neural mimic), "split" (side-by-side), "video" (target stream), or "mesh" (3D)
+let activeAvatarMode = "mesh"; // "mesh" (3D Auto-Rig), "split" (side-by-side), "photo" (neural mimic), or "video" (target stream)
 let geminiLive = null;
 let localAudioEngine = null;
 let localBrain = null;
@@ -60,10 +60,28 @@ const savedKey = localStorage.getItem("GEMINI_API_KEY") || "";
 geminiKeyInput.value = savedKey;
 
 function initApp() {
-  // 1. Initialize Original Photo Avatar Engine (Default 2.5D HeyGen-style portrait)
+  // 1. Initialize Primary 3D Auto-Rigged Avatar Engine (Crimson Commandress)
+  meshRenderer = new AvatarRenderer(webglCanvas, {
+    onFpsUpdate: (fps) => {
+      if (fpsVal && (activeAvatarMode === "mesh" || activeAvatarMode === "split")) fpsVal.textContent = `${fps} FPS`;
+    },
+    onLoaded: () => {
+      console.log("[Main] Auto-Rigged 3D avatar loaded successfully!");
+      if (window.report) window.report('info', 'Main index 3D Rig Ready callback invoked');
+      const params = new URLSearchParams(window.location.search);
+      if (params.has('snap')) {
+        const snapName = params.get('snap');
+        setTimeout(() => {
+          captureMainSnapshot(snapName);
+        }, 800);
+      }
+    }
+  });
+
+  // 2. Initialize Original Photo Avatar Engine (Secondary 2.5D Fallback)
   photoRenderer = new PhotoAvatarRenderer(photoCanvas, {
     onFpsUpdate: (fps) => {
-      if (fpsVal && (activeAvatarMode === "photo" || activeAvatarMode === "split")) fpsVal.textContent = `${fps} FPS`;
+      if (fpsVal && activeAvatarMode === "photo") fpsVal.textContent = `${fps} FPS`;
     }
   });
 
@@ -169,16 +187,42 @@ function initApp() {
   // 5. Setup UI Event Handlers
   setupEvents();
 
-  // Check URL query parameter (e.g. ?mode=split)
+  // Set initial avatar mode (query param ?mode=... or default to "mesh")
   const urlParams = new URLSearchParams(window.location.search);
   const initialMode = urlParams.get("mode");
-  if (initialMode && ["photo", "split", "video", "mesh"].includes(initialMode)) {
-    setAvatarMode(initialMode);
-  }
+  setAvatarMode(initialMode && ["photo", "split", "video", "mesh"].includes(initialMode) ? initialMode : "mesh");
 
   // Initial greeting
   dialogueBubble.textContent = "Hey! I'm Leelio. Great to meet you! How's your day going?";
   if (protocolVal) protocolVal.textContent = savedKey ? "Gemini 3.8 Live" : "Leelio Brain";
+}
+
+function captureMainSnapshot(filename) {
+  if (!webglCanvas) return;
+  try {
+    const offscreen = document.createElement('canvas');
+    offscreen.width = webglCanvas.width;
+    offscreen.height = webglCanvas.height;
+    const ctx = offscreen.getContext('2d');
+    ctx.drawImage(webglCanvas, 0, 0);
+
+    offscreen.toBlob((blob) => {
+      if (!blob) return;
+      fetch('/api/save-image?name=' + encodeURIComponent(filename), {
+        method: 'POST',
+        headers: { 'Content-Type': 'image/png' },
+        body: blob
+      })
+      .then(res => res.json())
+      .then(data => {
+        console.log('[Main] Saved snapshot:', filename, data);
+        if (window.report) window.report('saved', `Saved snapshot: ${filename} (${data.bytes || 0} bytes)`);
+      })
+      .catch(err => console.error('[Main] Failed to save snapshot:', err));
+    }, 'image/png');
+  } catch (err) {
+    console.error('[Main] captureMainSnapshot error:', err);
+  }
 }
 
 function showDiagnostic(msg) {
@@ -258,57 +302,8 @@ function renderLoop() {
 
 function setAvatarMode(mode) {
   activeAvatarMode = mode;
-  if (mode === "photo") {
-    if (canvasContainer) canvasContainer.classList.remove("split-mode");
-    photoCanvas.style.display = "block";
-    if (photoRenderer) photoRenderer.unsyncVideo();
-    if (videoAvatar) {
-      videoAvatar.style.display = "none";
-      videoAvatar.pause();
-    }
-    webglCanvas.style.display = "none";
-    if (splitBadgeLeft) splitBadgeLeft.style.display = "none";
-    if (splitBadgeRight) splitBadgeRight.style.display = "none";
-    if (avatarModeVal) avatarModeVal.textContent = "🌟 Neural Mimic";
-    if (photoRenderer) photoRenderer.resize();
-  } else if (mode === "split") {
-    if (canvasContainer) canvasContainer.classList.add("split-mode");
-    photoCanvas.style.display = "block";
-    if (videoAvatar) {
-      videoAvatar.style.display = "block";
-      videoAvatar.loop = true;
-      if (photoRenderer) {
-        photoRenderer.syncWithVideo(videoAvatar);
-      }
-      videoAvatar.play().catch(() => {});
-    }
-    webglCanvas.style.display = "none";
-    if (splitBadgeLeft) {
-      splitBadgeLeft.style.display = "block";
-      splitBadgeLeft.innerHTML = '🌟 Real-Time Neural Mimic <span style="font-size:0.75em; color:#2ed573;">● PHASE-LOCKED</span>';
-    }
-    if (splitBadgeRight) {
-      splitBadgeRight.style.display = "block";
-      splitBadgeRight.innerHTML = '🎯 Target Stream (HeyGen) <span style="font-size:0.75em; color:#f39c12;">● GROUND TRUTH</span>';
-    }
-    if (avatarModeVal) avatarModeVal.textContent = "🎯 Side-by-Side";
-    if (photoRenderer) photoRenderer.resize();
-  } else if (mode === "video") {
-    if (canvasContainer) canvasContainer.classList.remove("split-mode");
-    photoCanvas.style.display = "none";
-    if (photoRenderer) photoRenderer.unsyncVideo();
-    if (videoAvatar) {
-      videoAvatar.style.display = "block";
-      videoAvatar.currentTime = 0;
-      videoAvatar.play().catch(e => console.log("Video playback waiting for user gesture:", e));
-    }
-    webglCanvas.style.display = "none";
-    if (splitBadgeLeft) splitBadgeLeft.style.display = "none";
-    if (splitBadgeRight) splitBadgeRight.style.display = "none";
-    if (avatarModeVal) avatarModeVal.textContent = "🎥 Target Stream";
-    if (fpsVal) fpsVal.textContent = "60 FPS";
-  } else if (mode === "mesh") {
-    if (canvasContainer) canvasContainer.classList.remove("split-mode");
+  if (mode === "mesh") {
+    if (canvasContainer) canvasContainer.classList.remove("split-mode", "split-3d");
     photoCanvas.style.display = "none";
     if (photoRenderer) photoRenderer.unsyncVideo();
     if (videoAvatar) {
@@ -318,16 +313,63 @@ function setAvatarMode(mode) {
     webglCanvas.style.display = "block";
     if (splitBadgeLeft) splitBadgeLeft.style.display = "none";
     if (splitBadgeRight) splitBadgeRight.style.display = "none";
-    if (avatarModeVal) avatarModeVal.textContent = "🤖 3D Mesh";
-    if (!meshRenderer) {
-      meshRenderer = new AvatarRenderer(webglCanvas, {
-        onFpsUpdate: (fps) => {
-          if (fpsVal && activeAvatarMode === "mesh") fpsVal.textContent = `${fps} FPS`;
-        }
-      });
-    } else {
+    if (avatarModeVal) avatarModeVal.textContent = "🤖 3D Auto-Rig";
+    if (meshRenderer) {
+      meshRenderer.unsyncVideo();
       meshRenderer.onWindowResize();
     }
+  } else if (mode === "split") {
+    if (canvasContainer) canvasContainer.classList.add("split-mode", "split-3d");
+    photoCanvas.style.display = "none";
+    if (photoRenderer) photoRenderer.unsyncVideo();
+    webglCanvas.style.display = "block";
+    if (videoAvatar) {
+      videoAvatar.style.display = "block";
+      videoAvatar.loop = true;
+      if (meshRenderer) {
+        meshRenderer.syncWithVideo(videoAvatar);
+      }
+      videoAvatar.play().catch(() => {});
+    }
+    if (splitBadgeLeft) {
+      splitBadgeLeft.style.display = "block";
+      splitBadgeLeft.innerHTML = '🤖 3D Auto-Rig <span style="font-size:0.75em; color:#2ed573;">● PHASE-LOCKED</span>';
+    }
+    if (splitBadgeRight) {
+      splitBadgeRight.style.display = "block";
+      splitBadgeRight.innerHTML = '🎯 Target Video <span style="font-size:0.75em; color:#f39c12;">● GROUND TRUTH</span>';
+    }
+    if (avatarModeVal) avatarModeVal.textContent = "🎯 Side-by-Side";
+    if (meshRenderer) meshRenderer.onWindowResize();
+  } else if (mode === "photo") {
+    if (canvasContainer) canvasContainer.classList.remove("split-mode", "split-3d");
+    photoCanvas.style.display = "block";
+    if (photoRenderer) photoRenderer.unsyncVideo();
+    if (meshRenderer) meshRenderer.unsyncVideo();
+    if (videoAvatar) {
+      videoAvatar.style.display = "none";
+      videoAvatar.pause();
+    }
+    webglCanvas.style.display = "none";
+    if (splitBadgeLeft) splitBadgeLeft.style.display = "none";
+    if (splitBadgeRight) splitBadgeRight.style.display = "none";
+    if (avatarModeVal) avatarModeVal.textContent = "🌟 Neural Photo";
+    if (photoRenderer) photoRenderer.resize();
+  } else if (mode === "video") {
+    if (canvasContainer) canvasContainer.classList.remove("split-mode", "split-3d");
+    photoCanvas.style.display = "none";
+    if (photoRenderer) photoRenderer.unsyncVideo();
+    if (meshRenderer) meshRenderer.unsyncVideo();
+    webglCanvas.style.display = "none";
+    if (videoAvatar) {
+      videoAvatar.style.display = "block";
+      videoAvatar.currentTime = 0;
+      videoAvatar.play().catch(e => console.log("Video playback waiting for user gesture:", e));
+    }
+    if (splitBadgeLeft) splitBadgeLeft.style.display = "none";
+    if (splitBadgeRight) splitBadgeRight.style.display = "none";
+    if (avatarModeVal) avatarModeVal.textContent = "🎥 Target Video";
+    if (fpsVal) fpsVal.textContent = "60 FPS";
   }
 }
 
@@ -337,24 +379,22 @@ function playJessicaTargetAnimation() {
   statusText.textContent = "TARGET ANIMATION // JESSICA HAVOC (SYNCED)";
   statusDot.style.background = "#f39c12";
 
-  // If in 3D mesh mode, default to split mode so user can compare side-by-side
-  if (activeAvatarMode === "mesh") {
-    setAvatarMode("split");
-  }
-
-  // Phase-lock neural photo avatar to the video timeline
   if (videoAvatar) {
     videoAvatar.currentTime = 0;
     videoAvatar.muted = false;
 
-    if (photoRenderer) {
+    if (activeAvatarMode === "mesh" && meshRenderer) {
+      meshRenderer.syncWithVideo(videoAvatar);
+    } else if (activeAvatarMode === "photo" && photoRenderer) {
       photoRenderer.syncWithVideo(videoAvatar);
+    } else if (meshRenderer) {
+      meshRenderer.syncWithVideo(videoAvatar);
     }
 
     videoAvatar.play().then(() => {
       micBtn.classList.add("speaking");
       micLabel.textContent = "Speaking";
-      showDiagnostic("Phase-locked neural avatar to Jessica target video stream (kinematic ground truth)!");
+      showDiagnostic("Phase-locked 3D avatar to Jessica target video stream (kinematic ground truth)!");
     }).catch(err => {
       console.warn("Audio autoplay blocked by browser policy, falling back to muted video + TTS:", err);
       videoAvatar.muted = true;
@@ -367,28 +407,28 @@ function playJessicaTargetAnimation() {
       micLabel.textContent = isConversationActive ? "Listening" : "Tap to Talk";
       statusText.textContent = isConversationActive ? "LISTENING // SPEAK FREELY" : "ONLINE // READY";
       statusDot.style.background = "#2ed573";
-      if (activeAvatarMode !== "split" && photoRenderer) {
-        photoRenderer.unsyncVideo();
+      if (activeAvatarMode !== "split") {
+        if (meshRenderer) meshRenderer.unsyncVideo();
+        if (photoRenderer) photoRenderer.unsyncVideo();
       }
     };
-  } else if (photoRenderer) {
-    photoRenderer.playTargetMimicSequence();
+  } else {
     localAudioEngine.speak(quote);
   }
 }
 
 function setupEvents() {
-  // Avatar Mode Toggle: 🌟 Neural Mimic <-> 🎯 Side-by-Side <-> 🎥 Target Stream <-> 🤖 3D Mesh
+  // Avatar Mode Toggle: 🤖 3D Auto-Rig <-> 🎯 Side-by-Side <-> 🌟 Neural Photo <-> 🎥 Target Video
   if (avatarModeBtn) {
     avatarModeBtn.addEventListener("click", () => {
-      if (activeAvatarMode === "photo") {
+      if (activeAvatarMode === "mesh") {
         setAvatarMode("split");
       } else if (activeAvatarMode === "split") {
-        setAvatarMode("video");
-      } else if (activeAvatarMode === "video") {
-        setAvatarMode("mesh");
-      } else {
         setAvatarMode("photo");
+      } else if (activeAvatarMode === "photo") {
+        setAvatarMode("video");
+      } else {
+        setAvatarMode("mesh");
       }
     });
   }

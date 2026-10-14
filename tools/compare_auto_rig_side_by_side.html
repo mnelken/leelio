@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Auto-Rigged 3D Avatar vs Target Video Stream</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #0f1015;
+      color: #e5e9f0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      overflow: hidden;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    header {
+      background: #181922;
+      border-bottom: 1px solid #2e3440;
+      padding: 10px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+    }
+    header h1 {
+      font-size: 16px;
+      font-weight: 600;
+      color: #88c0d0;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    header .status-badge {
+      background: #2e3440;
+      padding: 4px 10px;
+      border-radius: 4px;
+      font-size: 12px;
+      color: #a3be8c;
+      font-family: monospace;
+    }
+    .main-container {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 2px;
+      background: #2e3440;
+      min-height: 0;
+    }
+    .panel {
+      background: #12131a;
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    .panel-header {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      z-index: 10;
+      background: rgba(18, 19, 26, 0.85);
+      backdrop-filter: blur(8px);
+      padding: 6px 14px;
+      border-radius: 6px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      font-size: 13px;
+      font-weight: 500;
+    }
+    .panel-header span {
+      color: #81a1c1;
+      font-weight: 600;
+    }
+    #video-wrapper {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #000;
+    }
+    video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    #canvas-container {
+      width: 100%;
+      height: 100%;
+    }
+    .controls-bar {
+      background: #181922;
+      border-top: 1px solid #2e3440;
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex-shrink: 0;
+    }
+    button {
+      background: #434c5e;
+      color: #eceff4;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 500;
+      font-size: 13px;
+      transition: all 0.2s;
+    }
+    button:hover { background: #4c566a; }
+    button.primary { background: #5e81ac; }
+    button.primary:hover { background: #81a1c1; }
+    .scrubber-container {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    input[type=range] {
+      flex: 1;
+      height: 6px;
+      background: #2e3440;
+      border-radius: 3px;
+      outline: none;
+      -webkit-appearance: none;
+    }
+    input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #88c0d0;
+      cursor: pointer;
+    }
+    .time-display {
+      font-family: monospace;
+      font-size: 13px;
+      color: #d8dee9;
+      min-width: 80px;
+    }
+    .telemetry-overlay {
+      position: absolute;
+      bottom: 16px;
+      left: 16px;
+      z-index: 10;
+      background: rgba(18, 19, 26, 0.85);
+      backdrop-filter: blur(8px);
+      padding: 10px 14px;
+      border-radius: 6px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      font-family: monospace;
+      font-size: 11px;
+      color: #d8dee9;
+      line-height: 1.5;
+      pointer-events: none;
+    }
+  </style>
+  <script>
+    window.report = function(type, msg) {
+      console.log('[' + type + '] ' + msg);
+      try {
+        fetch('/api/client-error', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: type, msg: String(msg), time: new Date().toISOString() })
+        }).catch(() => {});
+      } catch (e) {}
+    };
+    window.addEventListener('error', (e) => {
+      window.report('unhandled_error', (e.message || e.error) + ' at ' + e.filename + ':' + e.lineno);
+    });
+    window.addEventListener('unhandledrejection', (e) => {
+      window.report('unhandled_rejection', e.reason ? (e.reason.stack || e.reason.message || e.reason) : 'rejection');
+    });
+    window.report('info', 'Compare tool initialized');
+  </script>
+  <script src="/three.min.js"></script>
+  <script src="/GLTFLoader.js"></script>
+</head>
+<body>
+  <header>
+    <h1>
+      <span>Auto-Rigged 3D Crimson Commandress</span>
+      <span style="color:#5e81ac;">&bull;</span>
+      <span>Kinematic Video Sync</span>
+    </h1>
+    <div class="status-badge" id="status-badge">Loading 3D Model...</div>
+  </header>
+
+  <div class="main-container">
+    <!-- Left: Target Reference Video -->
+    <div class="panel">
+      <div class="panel-header">Reference Stream: <span>Target Video (Avatar IV)</span></div>
+      <div id="video-wrapper">
+        <video id="target-video" src="/avatar_video.mp4" playsinline preload="auto" muted crossorigin="anonymous"></video>
+      </div>
+    </div>
+
+    <!-- Right: 3D Auto-Rigged Avatar -->
+    <div class="panel">
+      <div class="panel-header">True 3D Model: <span>Auto-Rigged &amp; Deformed</span></div>
+      <div id="canvas-container"></div>
+      <div class="telemetry-overlay" id="telemetry-overlay">
+        Roll: 0.0&deg; | Pitch: 0.00 | Yaw: 0.00<br>
+        Mouth: 0.00 | Smile: 0.00 | Brow: 0.00
+      </div>
+    </div>
+  </div>
+
+  <div class="controls-bar">
+    <button id="btn-play" class="primary">&#9654; Play Sync</button>
+    <div class="scrubber-container">
+      <span class="time-display" id="time-display">0.00 / 4.46s</span>
+      <input type="range" id="time-scrubber" min="0" max="4.46" step="0.01" value="0">
+    </div>
+    <button id="btn-wireframe">Toggle Wireframe</button>
+    <button id="btn-screenshot">Capture Snapshot</button>
+  </div>
+
+  <script type="module">
+    import { AutoRigged3DAvatar } from '../src/autoRigged3DAvatar.js';
+
+    let syncData = null;
+    let avatar = null;
+    let isPlaying = false;
+    let wireframeMode = false;
+
+    const video = document.getElementById('target-video');
+    const playBtn = document.getElementById('btn-play');
+    const scrubber = document.getElementById('time-scrubber');
+    const timeDisplay = document.getElementById('time-display');
+    const statusBadge = document.getElementById('status-badge');
+    const telemetry = document.getElementById('telemetry-overlay');
+    const wireframeBtn = document.getElementById('btn-wireframe');
+    const snapBtn = document.getElementById('btn-screenshot');
+
+    // 1. Three.js Scene Setup
+    const container = document.getElementById('canvas-container');
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x101014);
+
+    const camera = new THREE.PerspectiveCamera(32, container.clientWidth / container.clientHeight, 0.1, 50);
+    // Framed to match video portrait (waist to peaked cap)
+    camera.position.set(0.0, 0.42, 2.05);
+    camera.lookAt(0.0, 0.42, 0.0);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+    renderer.setSize(container.clientWidth, container.clientHeight);
+    renderer.setPixelRatio(window.devicePixelRatio || 1);
+    if (renderer.outputColorSpace) {
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+    } else {
+      renderer.outputEncoding = THREE.sRGBEncoding;
+    }
+    container.appendChild(renderer.domElement);
+
+    window.addEventListener('resize', () => {
+      camera.aspect = container.clientWidth / container.clientHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(container.clientWidth, container.clientHeight);
+    });
+
+    // 2. Add Background Plate (Arched Mahogany Doorway from Target Video)
+    const bgLoader = new THREE.TextureLoader();
+    bgLoader.load('/background_plate.jpg', (bgTex) => {
+      bgTex.encoding = THREE.sRGBEncoding;
+      const bgGeom = new THREE.PlaneGeometry(2.8, 2.1);
+      const bgMat = new THREE.MeshBasicMaterial({ map: bgTex, depthWrite: false });
+      const bgMesh = new THREE.Mesh(bgGeom, bgMat);
+      bgMesh.position.set(0.0, 0.42, -0.65);
+      scene.add(bgMesh);
+    });
+
+    // 3. Lighting (Warm studio portrait key, soft fill, cool rim)
+    const ambientLight = new THREE.AmbientLight(0xfff5ee, 1.3);
+    scene.add(ambientLight);
+
+    const keyLight = new THREE.DirectionalLight(0xffeedd, 1.6);
+    keyLight.position.set(0.8, 1.2, 1.2);
+    scene.add(keyLight);
+
+    const fillLight = new THREE.DirectionalLight(0xddeeff, 0.8);
+    fillLight.position.set(-0.8, 0.8, 1.0);
+    scene.add(fillLight);
+
+    const rimLight = new THREE.DirectionalLight(0xaaccff, 0.9);
+    rimLight.position.set(0.0, 1.2, -1.2);
+    scene.add(rimLight);
+
+    // 4. Load Sync Trajectory Data
+    fetch('/src/targetSyncData.json')
+      .then(res => res.json())
+      .then(data => {
+        syncData = data;
+        console.log('[SyncData] Loaded frames:', syncData.frames.length);
+        const params = new URLSearchParams(window.location.search);
+        if (params.has('t') && avatar && avatar.isReady) {
+          seekTo(parseFloat(params.get('t')));
+        }
+      })
+      .catch(err => console.error('[SyncData] Error loading sync data:', err));
+
+    // 5. Initialize Auto-Rigged 3D Avatar
+    avatar = new AutoRigged3DAvatar({
+      modelUrl: '/crimson_153.glb',
+      onLoaded: () => {
+        statusBadge.textContent = "3D Rig Ready (60 FPS)";
+        statusBadge.style.color = "#a3be8c";
+        window.AVATAR_READY = true;
+        if (window.report) window.report('info', '3D Rig Ready callback invoked');
+
+        const params = new URLSearchParams(window.location.search);
+        const t = params.has('t') ? parseFloat(params.get('t')) : 0.0;
+        seekTo(t);
+
+        if (params.has('snap')) {
+          const snapName = params.get('snap');
+          setTimeout(() => {
+            captureCompositeSnapshot(snapName);
+          }, 600);
+        }
+      },
+      onError: (err) => {
+        statusBadge.textContent = "Rig Error: " + (err.message || err);
+        statusBadge.style.color = "#bf616a";
+        if (window.report) window.report('rig_error', err.stack || err.message || String(err));
+      }
+    });
+
+    avatar.load(scene, (progress) => {
+      statusBadge.textContent = `Auto-Rigging: ${Math.round(progress * 100)}%`;
+    });
+
+    // Interpolate frame parameters at timestamp t
+    function getInterpolatedFrame(t) {
+      if (!syncData || !syncData.frames || syncData.frames.length === 0) {
+        return { roll: 0, pitch: 0, yaw: 0, mouthOpen: 0, mouthSmile: 0, browLift: 0, eyeBlink: 0 };
+      }
+      const frames = syncData.frames;
+      if (t <= frames[0].t) return frames[0];
+      if (t >= frames[frames.length - 1].t) return frames[frames.length - 1];
+
+      // Find surrounding frames
+      let idx = 0;
+      while (idx < frames.length - 1 && frames[idx + 1].t <= t) {
+        idx++;
+      }
+      const fA = frames[idx];
+      const fB = frames[idx + 1];
+      const span = fB.t - fA.t;
+      const alpha = span > 0 ? (t - fA.t) / span : 0;
+
+      const lerp = (a, b) => (a || 0) + ((b || 0) - (a || 0)) * alpha;
+
+      return {
+        roll: lerp(fA.roll, fB.roll),
+        pitch: lerp(fA.pitch, fB.pitch),
+        yaw: lerp(fA.yaw, fB.yaw),
+        mouthOpen: lerp(fA.mouthOpen, fB.mouthOpen),
+        mouthSmile: lerp(fA.mouthSmile, fB.mouthSmile),
+        browLift: lerp(fA.browLift, fB.browLift),
+        eyeBlink: lerp(fA.eyeBlink || 0, fB.eyeBlink || 0),
+        audioRms: lerp(fA.audioRms || 0, fB.audioRms || 0)
+      };
+    }
+
+    function evaluateFrameAt(t) {
+      const frame = getInterpolatedFrame(t);
+      if (avatar && avatar.isReady) {
+        avatar.applyKinematics(frame);
+      }
+      const effOpen = frame.audioRms > 0.005 ? Math.min(1.0, frame.audioRms * 4.0) : (frame.mouthOpen < 0.99 ? frame.mouthOpen : 0);
+      telemetry.innerHTML = `
+        Roll: ${frame.roll.toFixed(1)}&deg; | Pitch: ${frame.pitch.toFixed(2)} | Yaw: ${frame.yaw.toFixed(2)}<br>
+        SpeechOpen: ${effOpen.toFixed(2)} | Smile: ${frame.mouthSmile.toFixed(2)} | Brow: ${frame.browLift.toFixed(2)} | AudioRMS: ${(frame.audioRms || 0).toFixed(3)}
+      `;
+    }
+
+    function seekTo(t) {
+      t = Math.max(0, Math.min(4.46, t));
+      video.currentTime = t;
+      scrubber.value = t;
+      timeDisplay.textContent = `${t.toFixed(2)} / 4.46s`;
+      evaluateFrameAt(t);
+    }
+
+    // Controls Event Listeners
+    playBtn.addEventListener('click', () => {
+      if (video.paused) {
+        video.play();
+        isPlaying = true;
+        playBtn.textContent = "❚❚ Pause";
+      } else {
+        video.pause();
+        isPlaying = false;
+        playBtn.textContent = "▶ Play Sync";
+      }
+    });
+
+    video.addEventListener('ended', () => {
+      isPlaying = false;
+      playBtn.textContent = "▶ Play Sync";
+    });
+
+    scrubber.addEventListener('input', (e) => {
+      const t = parseFloat(e.target.value);
+      seekTo(t);
+    });
+
+    wireframeBtn.addEventListener('click', () => {
+      wireframeMode = !wireframeMode;
+      if (avatar && avatar.skinnedMesh && avatar.skinnedMesh.material) {
+        avatar.skinnedMesh.material.wireframe = wireframeMode;
+      }
+      wireframeBtn.textContent = wireframeMode ? "Shaded Mesh" : "Toggle Wireframe";
+    });
+
+    snapBtn.addEventListener('click', () => {
+      renderer.render(scene, camera);
+      const dataUrl = renderer.domElement.toDataURL('image/png');
+      fetch('/api/save-image?name=auto_rig_snapshot.png', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: dataUrl
+      }).then(res => res.json()).then(r => {
+        alert("Snapshot saved to tools/auto_rig_snapshot.png (" + r.bytes + " bytes)");
+      });
+    });
+
+    // Master Render Loop
+    function renderLoop() {
+      requestAnimationFrame(renderLoop);
+
+      if (isPlaying && !video.paused) {
+        const t = video.currentTime;
+        scrubber.value = t;
+        timeDisplay.textContent = `${t.toFixed(2)} / 4.46s`;
+        evaluateFrameAt(t);
+      }
+
+      renderer.render(scene, camera);
+    }
+
+    renderLoop();
+
+    // Auto-save hook for headless testing
+    window.saveRenderToDisk = function(filename) {
+      renderer.render(scene, camera);
+      const dataUrl = renderer.domElement.toDataURL('image/png');
+      return fetch('/api/save-image?name=' + encodeURIComponent(filename), {
+        method: 'POST',
+        body: dataUrl
+      });
+    };
+
+    window.captureCompositeSnapshot = function(filename) {
+      if (window.report) window.report('info', 'Capturing composite snapshot: ' + filename);
+      const compCanvas = document.createElement('canvas');
+      compCanvas.width = 1600;
+      compCanvas.height = 900;
+      const ctx = compCanvas.getContext('2d');
+
+      ctx.fillStyle = '#0f1015';
+      ctx.fillRect(0, 0, 1600, 900);
+
+      // Left: Video
+      try {
+        if (video && video.videoWidth > 0) {
+          const vRatio = video.videoWidth / video.videoHeight;
+          const targetW = 800;
+          const targetH = targetW / vRatio;
+          const offsetY = (900 - targetH) / 2;
+          ctx.drawImage(video, 0, Math.max(0, offsetY), targetW, targetH);
+        }
+      } catch (e) {
+        console.warn('Video draw error:', e);
+      }
+
+      // Render 3D Scene
+      renderer.render(scene, camera);
+      ctx.drawImage(renderer.domElement, 800, 0, 800, 900);
+
+      // Overlays
+      ctx.fillStyle = 'rgba(18, 19, 26, 0.85)';
+      ctx.fillRect(12, 12, 380, 36);
+      ctx.fillRect(812, 12, 420, 36);
+
+      ctx.font = 'bold 15px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+      ctx.fillStyle = '#81a1c1';
+      ctx.fillText('Reference Stream: Target Video (Avatar IV)', 24, 35);
+      ctx.fillText('True 3D Model: Auto-Rigged & Deformed', 824, 35);
+
+      const frame = getInterpolatedFrame(video.currentTime || 0);
+      ctx.fillStyle = 'rgba(18, 19, 26, 0.85)';
+      ctx.fillRect(812, 810, 520, 72);
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+      ctx.strokeRect(812, 810, 520, 72);
+
+      ctx.font = '13px monospace';
+      const effOpen = frame.audioRms > 0.005 ? Math.min(1.0, frame.audioRms * 4.0) : (frame.mouthOpen < 0.99 ? frame.mouthOpen : 0);
+      ctx.fillText(`Timestamp: ${(video.currentTime || 0).toFixed(2)}s / 4.46s | AudioRMS: ${(frame.audioRms || 0).toFixed(3)}`, 824, 832);
+      ctx.fillText(`Roll: ${frame.roll.toFixed(1)}° | Pitch: ${frame.pitch.toFixed(2)} | Yaw: ${frame.yaw.toFixed(2)}`, 824, 852);
+      ctx.fillText(`SpeechOpen: ${effOpen.toFixed(2)} | Smile: ${frame.mouthSmile.toFixed(2)} | Brow: ${frame.browLift.toFixed(2)}`, 824, 870);
+
+      const dataUrl = compCanvas.toDataURL('image/png');
+      return fetch('/api/save-image?name=' + encodeURIComponent(filename), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: dataUrl
+      }).then(res => res.json()).then(res => {
+        if (window.report) window.report('saved', 'Saved snapshot: ' + filename + ' (' + res.bytes + ' bytes)');
+        window.SNAPSHOT_SAVED = true;
+      }).catch(err => {
+        if (window.report) window.report('save_error', err.message);
+      });
+    };
+  </script>
+</body>
+</html>

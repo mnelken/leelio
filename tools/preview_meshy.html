@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Preview Meshy 3D Models</title>
+  <style>
+    body { margin: 0; background: #111; color: #eee; font-family: sans-serif; overflow: hidden; }
+    #canvas-container { width: 100vw; height: 100vh; }
+    #info { position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.8); padding: 10px 16px; border-radius: 8px; font-size: 14px; z-index: 999; }
+  </style>
+  <script>
+    function report(type, msg) {
+      console.log('[' + type + '] ' + msg);
+      try {
+        fetch('/api/client-error', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: type, msg: String(msg), time: new Date().toISOString() })
+        });
+      } catch (e) {}
+    }
+    window.onerror = function(msg, url, line, col, err) {
+      report('unhandled_error', msg + ' at ' + url + ':' + line + ':' + col);
+    };
+  </script>
+  <script src="/three.min.js"></script>
+  <script src="/GLTFLoader.js"></script>
+</head>
+<body>
+  <div id="info">Initializing Three.js...</div>
+  <div id="canvas-container"></div>
+
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const modelName = params.get('model') || 'crimson_153.glb';
+    const view = params.get('view') || 'portrait';
+
+    const container = document.getElementById('canvas-container');
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x1a1a24);
+
+    const camera = new THREE.PerspectiveCamera(35, window.innerWidth / window.innerHeight, 0.1, 100);
+    if (view === 'portrait') {
+      camera.position.set(0, 0.60, 0.85);
+      camera.lookAt(0, 0.60, 0);
+    } else {
+      camera.position.set(0, 0.0, 2.8);
+      camera.lookAt(0, 0.0, 0);
+    }
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(window.devicePixelRatio || 1);
+    if (renderer.outputColorSpace) {
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+    } else {
+      renderer.outputEncoding = THREE.sRGBEncoding;
+    }
+    container.appendChild(renderer.domElement);
+
+    // Lighting
+    const ambient = new THREE.AmbientLight(0xffffff, 1.2);
+    scene.add(ambient);
+
+    const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
+    dirLight.position.set(1, 2, 2);
+    scene.add(dirLight);
+
+    const backLight = new THREE.DirectionalLight(0x7799ff, 0.8);
+    backLight.position.set(-1, 1, -2);
+    scene.add(backLight);
+
+    report('info', 'Loading model: ' + modelName);
+    document.getElementById('info').textContent = 'Loading ' + modelName + '...';
+
+    const loader = new THREE.GLTFLoader();
+    loader.load(
+      '/' + modelName,
+      (gltf) => {
+        document.getElementById('info').textContent = 'Loaded: ' + modelName + ' (' + view + ')';
+        const root = gltf.scene;
+        scene.add(root);
+
+        let meshCount = 0;
+        root.traverse((child) => {
+          if (child.isMesh) {
+            meshCount++;
+            if (child.material) {
+              child.material.roughness = Math.max(child.material.roughness || 0, 0.35);
+            }
+          }
+        });
+
+        report('success', 'Model loaded successfully! Meshes: ' + meshCount);
+        window.MODEL_LOADED = true;
+      },
+      (xhr) => {
+        const pct = Math.round((xhr.loaded / (xhr.total || 20123732)) * 100);
+        document.getElementById('info').textContent = 'Loading ' + modelName + ': ' + pct + '%';
+      },
+      (err) => {
+        report('gltf_load_error', err.message || JSON.stringify(err));
+        document.getElementById('info').textContent = 'Error: ' + err;
+      }
+    );
+
+    function animate() {
+      requestAnimationFrame(animate);
+      renderer.render(scene, camera);
+    }
+    animate();
+  </script>
+</body>
+</html>
